@@ -23,6 +23,7 @@
 #include "clang/AST/RecordLayout.h"
 #include "clang/AST/Reflection.h"
 #include "clang/Basic/DiagnosticMetafn.h"
+#include "clang/Basic/DiagnosticSema.h"
 #include "clang/Basic/SourceManager.h"
 #include "clang/Lex/Lexer.h"
 #include "clang/Lex/Preprocessor.h"
@@ -5570,6 +5571,16 @@ bool get_ith_parameter_of(APValue &Result, ASTContext &C, MetaActions &Meta,
     return true;
   size_t idx = Idx.getInt().getExtValue();
 
+  // Helper lambda to check the flag
+  auto CheckYukinoExt = [&]() -> bool {
+    if (!C.getLangOpts().YukinoTemplateReflection) {
+      Diagnoser(Range.getBegin(), diag::warn_yukino_extensions_required)
+          << "-fext-yukino-template-reflection";
+      return false;
+    }
+    return true;
+  };
+
   switch (RV.getReflectionKind()) {
   case ReflectionKind::Type: {
     if (auto FT = dyn_cast<FunctionProtoType>(RV.getReflectedType())) {
@@ -5590,11 +5601,53 @@ bool get_ith_parameter_of(APValue &Result, ASTContext &C, MetaActions &Meta,
 
       return SetAndSucceed(Result, makeReflection(FD->getParamDecl(idx)));
     }
+    // Template Parameters (Class/Var/Alias Templates reflected as Decls)
+    if (TemplateDecl *TD = dyn_cast<TemplateDecl>(RV.getReflectedDecl())) {
+      if (!CheckYukinoExt())
+        return true; // Error emitted by helper
+
+      TemplateParameterList *TPL = TD->getTemplateParameters();
+      if (idx >= TPL->size())
+        return SetAndSucceed(Result, Sentinel);
+
+      return SetAndSucceed(Result, makeReflection(TPL->getParam(idx)));
+    }
     return Diagnoser(Range.getBegin(), diag::metafn_cannot_query_property)
           << 5 << DescriptionOf(RV) << Range;
   }
   case ReflectionKind::Null:
-  case ReflectionKind::Template:
+  case ReflectionKind::Template: {
+    // GUARD: Check if the extension is enabled
+    if (!C.getLangOpts().YukinoTemplateReflection) {
+      // If disabled, fall through to the default error (cannot query property)
+      // or explicitly diagnose that the feature is disabled.
+      return Diagnoser(Range.getBegin(),
+                       diag::warn_yukino_extensions_required)
+             << "-fext-yukino-template-reflection";
+    }
+
+    TemplateName TN = RV.getReflectedTemplate();
+    // Convert the TemplateName to the underlying declaration
+    TemplateDecl *TD = TN.getAsTemplateDecl();
+
+    // If it's an OverloadedTemplate (which shouldn't happen given our previous
+    // fixes) or a DependentTemplateName that can't be resolved, we can't
+    // inspect parameters.
+    if (!TD) {
+      return Diagnoser(Range.getBegin(), diag::metafn_cannot_query_property)
+             << 5 << DescriptionOf(RV) << Range;
+    }
+
+    // Access the list of <typename T, int N, template<...> class C>
+    TemplateParameterList *TPL = TD->getTemplateParameters();
+
+    if (idx >= TPL->size())
+      return SetAndSucceed(Result, Sentinel);
+
+    // NamedDecl* here is the TemplateTypeParmDecl, NonTypeTemplateParmDecl,
+    // etc.
+    return SetAndSucceed(Result, makeReflection(TPL->getParam(idx)));
+  }
   case ReflectionKind::Object:
   case ReflectionKind::Value:
   case ReflectionKind::Namespace:

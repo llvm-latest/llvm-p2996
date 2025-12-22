@@ -3255,6 +3255,11 @@ def err_splice_intervening_lambda : Error<
   "cannot splice local entity %0 for which there is an intervening lambda "
   "expression">;
 
+// Yukino's extensions
+def warn_yukino_extensions_required : Warning<
+  "reflection of this entity requires the experimental flag '%0'">,
+  InGroup<DiagGroup<"ext-yukino">>, DefaultIgnore;
+
 def err_metafunction_empty_args : Error<
   "__metafunction requires arguments">;
 def err_metafunction_leading_arg_type : Error<
@@ -10786,7 +10791,7 @@ def warn_dangling_reference_captured_by_unknown : Warning<
 
 // Diagnostics based on the Lifetime safety analysis.
 def warn_lifetime_safety_loan_expires_permissive : Warning<
-   "object whose reference is captured does not live long enough">, 
+   "object whose reference is captured does not live long enough">,
    InGroup<LifetimeSafetyPermissive>, DefaultIgnore;
 def warn_lifetime_safety_loan_expires_strict : Warning<
    "object whose reference is captured may not live long enough">,
