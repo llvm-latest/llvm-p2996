@@ -20,7 +20,7 @@
 #include "clang/AST/DeclarationName.h"
 #include "clang/AST/NestedNameSpecifierBase.h"
 #include "clang/AST/TemplateBase.h"
-#include "clang/AST/Type.h"
+#include "clang/AST/TypeBase.h"
 #include "clang/Basic/LLVM.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/Specifiers.h"
@@ -991,12 +991,22 @@ class SubstTemplateTypeParmTypeLoc :
                                      SubstTemplateTypeParmType> {
 };
 
-  /// Wrapper for substituted template type parameters.
-class SubstTemplateTypeParmPackTypeLoc :
-    public InheritingConcreteTypeLoc<TypeSpecTypeLoc,
-                                     SubstTemplateTypeParmPackTypeLoc,
-                                     SubstTemplateTypeParmPackType> {
-};
+/// Abstract type representing delayed type pack expansions.
+class SubstPackTypeLoc
+    : public InheritingConcreteTypeLoc<TypeSpecTypeLoc, SubstPackTypeLoc,
+                                       SubstPackType> {};
+
+/// Wrapper for substituted template type parameters.
+class SubstTemplateTypeParmPackTypeLoc
+    : public InheritingConcreteTypeLoc<SubstPackTypeLoc,
+                                       SubstTemplateTypeParmPackTypeLoc,
+                                       SubstTemplateTypeParmPackType> {};
+
+/// Wrapper for substituted template type parameters.
+class SubstBuiltinTemplatePackTypeLoc
+    : public InheritingConcreteTypeLoc<SubstPackTypeLoc,
+                                       SubstBuiltinTemplatePackTypeLoc,
+                                       SubstBuiltinTemplatePackType> {};
 
 struct AttributedLocInfo {
   const Attr *TypeAttr;
@@ -1864,11 +1874,10 @@ public:
     if (!getLocalData()->QualifierData)
       return NestedNameSpecifierLoc();
 
-    auto *QTN =
-        getTypePtr()->getTemplateName().getAsAdjustedQualifiedTemplateName();
-    assert(QTN && "missing qualification");
-    return NestedNameSpecifierLoc(QTN->getQualifier(),
-                                  getLocalData()->QualifierData);
+    NestedNameSpecifier Qualifier =
+        getTypePtr()->getTemplateName().getQualifier();
+    assert(Qualifier && "missing qualification");
+    return NestedNameSpecifierLoc(Qualifier, getLocalData()->QualifierData);
   }
 
   SourceLocation getTemplateKeywordLoc() const {
@@ -2495,10 +2504,9 @@ public:
     void *Data = getLocalData()->QualifierData;
     if (!Data)
       return NestedNameSpecifierLoc();
-    NestedNameSpecifier Qualifier = getTypePtr()
-                                        ->getTemplateName()
-                                        .getAsAdjustedQualifiedTemplateName()
-                                        ->getQualifier();
+    NestedNameSpecifier Qualifier =
+        getTypePtr()->getTemplateName().getQualifier();
+    assert(Qualifier && "missing qualification");
     return NestedNameSpecifierLoc(Qualifier, Data);
   }
 
@@ -2513,12 +2521,18 @@ public:
     }
 
     assert(QualifierLoc.getNestedNameSpecifier() ==
-               getTypePtr()
-                   ->getTemplateName()
-                   .getAsAdjustedQualifiedTemplateName()
-                   ->getQualifier() &&
+               getTypePtr()->getTemplateName().getQualifier() &&
            "Inconsistent nested-name-specifier pointer");
     getLocalData()->QualifierData = QualifierLoc.getOpaqueData();
+  }
+
+  SourceRange getLocalSourceRange() const {
+    SourceLocation BeginLoc = getElaboratedKeywordLoc();
+    if (BeginLoc.isInvalid())
+      BeginLoc = getQualifierLoc().getBeginLoc();
+    if (BeginLoc.isInvalid())
+      BeginLoc = getNameLoc();
+    return {BeginLoc, getNameLoc()};
   }
 
   void initializeLocal(ASTContext &Context, SourceLocation Loc);

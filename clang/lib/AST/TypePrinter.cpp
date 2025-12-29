@@ -24,7 +24,7 @@
 #include "clang/AST/PrettyPrinter.h"
 #include "clang/AST/TemplateBase.h"
 #include "clang/AST/TemplateName.h"
-#include "clang/AST/Type.h"
+#include "clang/AST/TypeBase.h"
 #include "clang/Basic/AddressSpaces.h"
 #include "clang/Basic/AttrKinds.h"
 #include "clang/Basic/ExceptionSpecificationType.h"
@@ -235,6 +235,7 @@ bool TypePrinter::canPrefixQualifiers(const Type *T,
     case Type::Enum:
     case Type::TemplateTypeParm:
     case Type::SubstTemplateTypeParmPack:
+    case Type::SubstBuiltinTemplatePack:
     case Type::DeducedTemplateSpecialization:
     case Type::TemplateSpecialization:
     case Type::InjectedClassName:
@@ -1751,6 +1752,15 @@ void TypePrinter::printSubstTemplateTypeParmAfter(
   printAfter(T->getReplacementType(), OS);
 }
 
+void TypePrinter::printSubstBuiltinTemplatePackBefore(
+    const SubstBuiltinTemplatePackType *T, raw_ostream &OS) {
+  IncludeStrongLifetimeRAII Strong(Policy);
+  OS << "type-pack";
+}
+
+void TypePrinter::printSubstBuiltinTemplatePackAfter(
+    const SubstBuiltinTemplatePackType *T, raw_ostream &OS) {}
+
 void TypePrinter::printSubstTemplateTypeParmPackBefore(
                                         const SubstTemplateTypeParmPackType *T,
                                         raw_ostream &OS) {
@@ -2174,6 +2184,9 @@ void TypePrinter::printAttributedAfter(const AttributedType *T,
   case attr::ExtVectorType:
     OS << "ext_vector_type";
     break;
+  case attr::CFISalt:
+    OS << "cfi_salt(\"" << cast<CFISaltAttr>(T->getAttr())->getSalt() << "\")";
+    break;
   }
   OS << "))";
 }
@@ -2389,7 +2402,7 @@ static bool isSubstitutedType(ASTContext &Ctx, QualType T, QualType Pattern,
     return true;
 
   // A type parameter matches its argument.
-  if (auto *TTPT = Pattern->getAs<TemplateTypeParmType>()) {
+  if (auto *TTPT = Pattern->getAsCanonical<TemplateTypeParmType>()) {
     if (TTPT->getDepth() == Depth && TTPT->getIndex() < Args.size() &&
         Args[TTPT->getIndex()].getKind() == TemplateArgument::Type) {
       QualType SubstArg = Ctx.getQualifiedType(

@@ -19,7 +19,7 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/MetaActions.h"
-#include "clang/AST/Type.h"
+#include "clang/AST/TypeBase.h"
 #include <functional>
 
 

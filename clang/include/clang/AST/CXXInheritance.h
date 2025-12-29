@@ -16,7 +16,7 @@
 #include "clang/AST/DeclBase.h"
 #include "clang/AST/DeclCXX.h"
 #include "clang/AST/DeclarationName.h"
-#include "clang/AST/Type.h"
+#include "clang/AST/TypeBase.h"
 #include "clang/AST/TypeOrdering.h"
 #include "clang/Basic/Specifiers.h"
 #include "llvm/ADT/DenseMap.h"
@@ -359,7 +359,7 @@ class CXXFinalOverriderMap
 
 /// A set of all the primary bases for a class.
 class CXXIndirectPrimaryBaseSet
-  : public llvm::SmallSet<const CXXRecordDecl*, 32> {};
+    : public llvm::SmallPtrSet<const CXXRecordDecl *, 32> {};
 
 inline bool
 inheritanceModelHasVBPtrOffsetField(MSInheritanceModel Inheritance) {

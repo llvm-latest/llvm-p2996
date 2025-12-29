@@ -16,7 +16,7 @@
 
 #include "clang/AST/Expr.h"
 #include "clang/AST/ExprCXX.h"
-#include "clang/AST/Type.h"
+#include "clang/AST/TypeBase.h"
 #include "clang/Basic/CapturedStmt.h"
 #include "clang/Basic/LLVM.h"
 #include "clang/Basic/PartialDiagnostic.h"
@@ -933,7 +933,7 @@ public:
   ///  to local variables that are usable as constant expressions and
   ///  do not involve an odr-use (they may still need to be captured
   ///  if the enclosing full-expression is instantiation dependent).
-  llvm::SmallSet<Expr *, 8> NonODRUsedCapturingExprs;
+  llvm::SmallPtrSet<Expr *, 8> NonODRUsedCapturingExprs;
 
   /// A map of explicit capture indices to their introducer source ranges.
   llvm::DenseMap<unsigned, SourceRange> ExplicitCaptureRanges;

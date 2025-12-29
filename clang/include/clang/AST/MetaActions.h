@@ -18,7 +18,7 @@
 #define LLVM_CLANG_AST_METAACTIONS_H
 
 #include <clang/AST/TemplateBase.h>
-#include <clang/AST/Type.h>
+#include <clang/AST/TypeBase.h>
 #include <clang/Basic/SourceLocation.h>
 #include <llvm/ADT/ArrayRef.h>
 #include <llvm/ADT/SmallVector.h>

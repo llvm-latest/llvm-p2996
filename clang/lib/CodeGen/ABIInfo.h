@@ -11,7 +11,7 @@
 
 #include "clang/AST/Attr.h"
 #include "clang/AST/CharUnits.h"
-#include "clang/AST/Type.h"
+#include "clang/AST/TypeBase.h"
 #include "llvm/IR/CallingConv.h"
 #include "llvm/IR/Type.h"
 
@@ -132,6 +132,12 @@ public:
   virtual llvm::FixedVectorType *
   getOptimalVectorMemoryType(llvm::FixedVectorType *T,
                              const LangOptions &Opt) const;
+
+  virtual llvm::Value *createCoercedLoad(Address SrcAddr, const ABIArgInfo &AI,
+                                         CodeGenFunction &CGF) const;
+  virtual void createCoercedStore(llvm::Value *Val, Address DstAddr,
+                                  const ABIArgInfo &AI, bool DestIsVolatile,
+                                  CodeGenFunction &CGF) const;
 };
 
 /// Target specific hooks for defining how a type should be passed or returned

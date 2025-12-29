@@ -13,7 +13,7 @@
 #ifndef LLVM_CLANG_SERIALIZATION_ASTREADER_H
 #define LLVM_CLANG_SERIALIZATION_ASTREADER_H
 
-#include "clang/AST/Type.h"
+#include "clang/AST/TypeBase.h"
 #include "clang/Basic/Diagnostic.h"
 #include "clang/Basic/DiagnosticOptions.h"
 #include "clang/Basic/IdentifierTable.h"
@@ -525,6 +525,9 @@ private:
 
   /// A timer used to track the time spent deserializing.
   std::unique_ptr<llvm::Timer> ReadTimer;
+
+  // A TimeRegion used to start and stop ReadTimer via RAII.
+  std::optional<llvm::TimeRegion> ReadTimeRegion;
 
   /// The location where the module file will be considered as
   /// imported from. For non-module AST types it should be invalid.

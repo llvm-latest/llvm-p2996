@@ -28,7 +28,7 @@
 #include "clang/AST/NestedNameSpecifier.h"
 #include "clang/AST/TemplateBase.h"
 #include "clang/AST/TemplateName.h"
-#include "clang/AST/Type.h"
+#include "clang/AST/TypeBase.h"
 #include "clang/AST/TypeLoc.h"
 #include "clang/AST/TypeOrdering.h"
 #include "clang/AST/UnresolvedSet.h"
@@ -699,9 +699,8 @@ DeduceTemplateSpecArguments(Sema &S, TemplateParameterList *TemplateParams,
     TNP = TP->getTemplateName();
     // FIXME: To preserve sugar, the TST needs to carry sugared resolved
     // arguments.
-    PResolved = TP->getCanonicalTypeInternal()
-                    ->castAs<TemplateSpecializationType>()
-                    ->template_arguments();
+    PResolved =
+        TP->castAsCanonical<TemplateSpecializationType>()->template_arguments();
   } else {
     const auto *TT = P->castAs<InjectedClassNameType>();
     TNP = TT->getTemplateName(S.Context);
@@ -710,6 +709,9 @@ DeduceTemplateSpecArguments(Sema &S, TemplateParameterList *TemplateParams,
 
   // If the parameter is an alias template, there is nothing to deduce.
   if (const auto *TD = TNP.getAsTemplateDecl(); TD && TD->isTypeAlias())
+    return TemplateDeductionResult::Success;
+  // Pack-producing templates can only be matched after substitution.
+  if (isPackProducingBuiltinTemplateName(TNP))
     return TemplateDeductionResult::Success;
 
   // Check whether the template argument is a dependent template-id.
@@ -929,7 +931,11 @@ private:
       S.collectUnexpandedParameterPacks(Pattern, Unexpanded);
       for (unsigned I = 0, N = Unexpanded.size(); I != N; ++I) {
         unsigned Depth, Index;
-        std::tie(Depth, Index) = getDepthAndIndex(Unexpanded[I]);
+        if (auto DI = getDepthAndIndex(Unexpanded[I]))
+          std::tie(Depth, Index) = *DI;
+        else
+          continue;
+
         if (Depth == Info.getDeducedDepth())
           AddPack(Index);
       }
@@ -937,7 +943,6 @@ private:
 
     // Look for unexpanded packs in the pattern.
     Collect(Pattern);
-    assert(!Packs.empty() && "Pack expansion without unexpanded packs?");
 
     unsigned NumNamedPacks = Packs.size();
 
@@ -1432,7 +1437,8 @@ static bool isForwardingReference(QualType Param, unsigned FirstInnerIndex) {
   if (auto *ParamRef = Param->getAs<RValueReferenceType>()) {
     if (ParamRef->getPointeeType().getQualifiers())
       return false;
-    auto *TypeParm = ParamRef->getPointeeType()->getAs<TemplateTypeParmType>();
+    auto *TypeParm =
+        ParamRef->getPointeeType()->getAsCanonical<TemplateTypeParmType>();
     return TypeParm && TypeParm->getIndex() >= FirstInnerIndex;
   }
   return false;
@@ -1697,7 +1703,7 @@ static TemplateDeductionResult DeduceTemplateArgumentsByTypeMatch(
   //
   //     T
   //     cv-list T
-  if (const auto *TTP = P->getAs<TemplateTypeParmType>()) {
+  if (const auto *TTP = P->getAsCanonical<TemplateTypeParmType>()) {
     // Just skip any attempts to deduce from a placeholder type or a parameter
     // at a different depth.
     if (A->isPlaceholderType() || Info.getDeducedDepth() != TTP->getDepth())
@@ -1859,6 +1865,7 @@ static TemplateDeductionResult DeduceTemplateArgumentsByTypeMatch(
 
     case Type::TemplateTypeParm:
     case Type::SubstTemplateTypeParmPack:
+    case Type::SubstBuiltinTemplatePack:
       llvm_unreachable("Type nodes handled above");
 
     case Type::Auto:
@@ -2913,11 +2920,7 @@ Sema::getTrivialTemplateArgumentLoc(const TemplateArgument &Arg,
     case TemplateArgument::TemplateExpansion: {
       NestedNameSpecifierLocBuilder Builder;
       TemplateName Template = Arg.getAsTemplateOrTemplatePattern();
-      if (DependentTemplateName *DTN = Template.getAsDependentTemplateName())
-        Builder.MakeTrivial(Context, DTN->getQualifier(), Loc);
-      else if (QualifiedTemplateName *QTN =
-                   Template.getAsQualifiedTemplateName())
-        Builder.MakeTrivial(Context, QTN->getQualifier(), Loc);
+      Builder.MakeTrivial(Context, Template.getQualifier(), Loc);
       return TemplateArgumentLoc(
           Context, Arg, Loc, Builder.getWithLocInContext(Context), Loc,
           /*EllipsisLoc=*/Arg.getKind() == TemplateArgument::TemplateExpansion
@@ -3558,7 +3561,7 @@ static bool isSimpleTemplateIdType(QualType T) {
   //
   // This only arises during class template argument deduction for a copy
   // deduction candidate, where it permits slicing.
-  if (T->getAs<InjectedClassNameType>())
+  if (isa<InjectedClassNameType>(T.getCanonicalType()))
     return true;
 
   return false;
@@ -5610,7 +5613,7 @@ static TemplateDeductionResult CheckDeductionConsistency(
   // so let it transform their specializations instead.
   bool IsDeductionGuide = isa<CXXDeductionGuideDecl>(FTD->getTemplatedDecl());
   if (IsDeductionGuide) {
-    if (auto *Injected = P->getAs<InjectedClassNameType>())
+    if (auto *Injected = P->getAsCanonical<InjectedClassNameType>())
       P = Injected->getOriginalDecl()->getCanonicalTemplateSpecializationType(
           S.Context);
   }
@@ -5631,10 +5634,10 @@ static TemplateDeductionResult CheckDeductionConsistency(
   auto T1 = S.Context.getUnqualifiedArrayType(InstP.getNonReferenceType());
   auto T2 = S.Context.getUnqualifiedArrayType(A.getNonReferenceType());
   if (IsDeductionGuide) {
-    if (auto *Injected = T1->getAs<InjectedClassNameType>())
+    if (auto *Injected = T1->getAsCanonical<InjectedClassNameType>())
       T1 = Injected->getOriginalDecl()->getCanonicalTemplateSpecializationType(
           S.Context);
-    if (auto *Injected = T2->getAs<InjectedClassNameType>())
+    if (auto *Injected = T2->getAsCanonical<InjectedClassNameType>())
       T2 = Injected->getOriginalDecl()->getCanonicalTemplateSpecializationType(
           S.Context);
   }
@@ -6988,7 +6991,12 @@ MarkUsedTemplateParameters(ASTContext &Ctx, QualType T,
       = cast<SubstTemplateTypeParmPackType>(T);
     if (Subst->getReplacedParameter()->getDepth() == Depth)
       Used[Subst->getIndex()] = true;
-    MarkUsedTemplateParameters(Ctx, Subst->getArgumentPack(),
+    MarkUsedTemplateParameters(Ctx, Subst->getArgumentPack(), OnlyDeduced,
+                               Depth, Used);
+    break;
+  }
+  case Type::SubstBuiltinTemplatePack: {
+    MarkUsedTemplateParameters(Ctx, cast<SubstPackType>(T)->getArgumentPack(),
                                OnlyDeduced, Depth, Used);
     break;
   }

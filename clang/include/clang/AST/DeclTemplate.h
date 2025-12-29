@@ -22,7 +22,7 @@
 #include "clang/AST/DeclarationName.h"
 #include "clang/AST/Redeclarable.h"
 #include "clang/AST/TemplateBase.h"
-#include "clang/AST/Type.h"
+#include "clang/AST/TypeBase.h"
 #include "clang/Basic/LLVM.h"
 #include "clang/Basic/SourceLocation.h"
 #include "clang/Basic/Specifiers.h"
@@ -1797,7 +1797,10 @@ public:
   }
 
   BuiltinTemplateKind getBuiltinTemplateKind() const { return BTK; }
+
+  bool isPackProducingBuiltinTemplate() const;
 };
+bool isPackProducingBuiltinTemplateName(TemplateName N);
 
 /// Provides information about an explicit instantiation of a variable or class
 /// template.

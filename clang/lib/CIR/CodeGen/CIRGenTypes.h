@@ -18,7 +18,7 @@
 #include "CIRGenRecordLayout.h"
 
 #include "clang/AST/DeclCXX.h"
-#include "clang/AST/Type.h"
+#include "clang/AST/TypeBase.h"
 #include "clang/Basic/ABI.h"
 #include "clang/CIR/Dialect/IR/CIRTypes.h"
 
@@ -129,6 +129,13 @@ public:
 
   /// Get the CIR function type for \arg Info.
   cir::FuncType getFunctionType(const CIRGenFunctionInfo &info);
+
+  cir::FuncType getFunctionType(clang::GlobalDecl gd);
+
+  /// Get the CIR function type for use in a vtable, given a CXXMethodDecl. If
+  /// the method has an incomplete return type, and/or incomplete argument
+  /// types, this will return the opaque type.
+  cir::FuncType getFunctionTypeForVTable(clang::GlobalDecl gd);
 
   // The arrangement methods are split into three families:
   //   - those meant to drive the signature and prologue/epilogue

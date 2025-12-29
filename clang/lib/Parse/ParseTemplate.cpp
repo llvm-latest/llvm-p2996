@@ -1312,6 +1312,8 @@ ParsedTemplateArgument Parser::ParseTemplateTemplateArgument() {
     }
   }
 
+  Result = Actions.ActOnTemplateTemplateArgument(Result);
+
   // If this is a pack expansion, build it as such.
   if (EllipsisLoc.isValid() && !Result.isInvalid())
     Result = Actions.ActOnPackExpansion(Result, EllipsisLoc);

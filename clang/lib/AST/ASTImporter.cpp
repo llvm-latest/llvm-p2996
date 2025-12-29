@@ -43,7 +43,7 @@
 #include "clang/AST/StmtVisitor.h"
 #include "clang/AST/TemplateBase.h"
 #include "clang/AST/TemplateName.h"
-#include "clang/AST/Type.h"
+#include "clang/AST/TypeBase.h"
 #include "clang/AST/TypeLoc.h"
 #include "clang/AST/TypeVisitor.h"
 #include "clang/AST/UnresolvedSet.h"
@@ -1859,6 +1859,14 @@ ExpectedType ASTNodeImporter::VisitSubstTemplateTypeParmPackType(
 
   return Importer.getToContext().getSubstTemplateTypeParmPackType(
       *ReplacedOrErr, T->getIndex(), T->getFinal(), *ToArgumentPack);
+}
+
+ExpectedType ASTNodeImporter::VisitSubstBuiltinTemplatePackType(
+    const SubstBuiltinTemplatePackType *T) {
+  Expected<TemplateArgument> ToArgumentPack = import(T->getArgumentPack());
+  if (!ToArgumentPack)
+    return ToArgumentPack.takeError();
+  return Importer.getToContext().getSubstBuiltinTemplatePack(*ToArgumentPack);
 }
 
 ExpectedType ASTNodeImporter::VisitTemplateSpecializationType(

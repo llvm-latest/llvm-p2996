@@ -33,7 +33,6 @@ class IdentifierInfo;
 class LangOptions;
 class NamespaceBaseDecl;
 struct PrintingPolicy;
-// todo [merge:yukino:maybe-revert]
 class SpliceSpecifier;
 class Type;
 class TypeLoc;
@@ -51,7 +50,6 @@ struct alignas(16) NamespaceAndPrefixStorage;
 /// the global specifier ('::'). The last two specifiers can only appear at the
 /// start of a nested-namespace-specifier.
 class NestedNameSpecifier {
-  // todo [merge:yukino,"do we need another kind for refl?"]
   enum class FlagKind { Null, Global, Invalid };
   enum class StoredKind {
     Type,
@@ -433,16 +431,6 @@ public:
   /// the nested-name-specifier.
   inline NamespaceAndPrefixLoc castAsNamespaceAndPrefix() const;
   inline NamespaceAndPrefixLoc getAsNamespaceAndPrefix() const;
-
-  // todo [merge:yukino:maybe-revert,impl,"StoredIdentifier was removed"]
-  /*
-  /// Retrieve the identifier stored in this nested name
-  /// specifier.
-  IdentifierInfo *getAsIdentifier() const {
-    if (Prefix.getInt() == StoredIdentifier)
-      return (IdentifierInfo *)Specifier;
-  }
-  */
 
   /// For a nested-name-specifier that refers to a type,
   /// retrieve the type with source-location information.

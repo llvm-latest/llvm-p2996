@@ -19,7 +19,7 @@
 #include "clang/AST/ParentMapContext.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtVisitor.h"
-#include "clang/AST/Type.h"
+#include "clang/AST/TypeBase.h"
 #include "clang/ASTMatchers/LowLevelHelpers.h"
 #include "clang/Analysis/Support/FixitUtil.h"
 #include "clang/Basic/SourceLocation.h"
@@ -2256,7 +2256,7 @@ namespace {
 // declarations to its uses and make sure we've covered all uses with our
 // analysis before we try to fix the declaration.
 class DeclUseTracker {
-  using UseSetTy = llvm::SmallSet<const DeclRefExpr *, 16>;
+  using UseSetTy = llvm::SmallPtrSet<const DeclRefExpr *, 16>;
   using DefMapTy = llvm::DenseMap<const VarDecl *, const DeclStmt *>;
 
   // Allocate on the heap for easier move.

@@ -16,7 +16,7 @@
 
 #include "CGPointerAuthInfo.h"
 #include "clang/AST/CharUnits.h"
-#include "clang/AST/Type.h"
+#include "clang/AST/TypeBase.h"
 #include "llvm/ADT/PointerIntPair.h"
 #include "llvm/IR/Constants.h"
 #include "llvm/Support/MathExtras.h"
@@ -175,6 +175,11 @@ public:
 
   static Address invalid() { return Address(nullptr); }
   bool isValid() const { return Pointer.getPointer() != nullptr; }
+
+  llvm::Value *getPointerIfNotSigned() const {
+    assert(isValid() && "pointer isn't valid");
+    return !isSigned() ? Pointer.getPointer() : nullptr;
+  }
 
   /// This function is used in situations where the caller is doing some sort of
   /// opaque "laundering" of the pointer.
