@@ -1081,10 +1081,10 @@ Sema::getMetafunctionCb(MetaFunctionID FnID) {
 
     assert(Metafn);
     auto MetafnImpl = std::make_unique<CXXMetafunctionExpr::ImplFn>(
-        [this, Metafn](MetaFunctionEvalContext EvalCtx) -> bool {
+        [this, Metafn](const MetaFunctionEvalContext &EvalCtx) -> bool {
           MetaActionsImpl Actions(*this);
-          EvalCtx.C = &Context;
-          EvalCtx.Meta = &Actions;
+          const_cast<MetaFunctionEvalContext &>(EvalCtx).C = &Context;
+          const_cast<MetaFunctionEvalContext &>(EvalCtx).Meta = &Actions;
           return Metafn->evaluate(EvalCtx);
         });
     ImplIt =
