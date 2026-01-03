@@ -4916,16 +4916,9 @@ bool get_ith_parameter_of(const MetaFunctionEvalContext &EvalCtx) {
                              diag::metafn_cannot_query_property)
            << 5 << DescriptionOf(RV) << EvalCtx.Range;
   }
-  case ReflectionKind::Null:
   case ReflectionKind::Template: {
-    // GUARD: Check if the extension is enabled
-    if (!C.getLangOpts().YukinoTemplateReflection) {
-      // If disabled, fall through to the default error (cannot query property)
-      // or explicitly diagnose that the feature is disabled.
-      return Diagnoser(Range.getBegin(),
-                       diag::warn_yukino_extensions_required)
-             << "-fext-yukino-template-reflection";
-    }
+    if (!CheckYukinoExt())
+        return true;
 
     TemplateName TN = RV.getReflectedTemplate();
     // Convert the TemplateName to the underlying declaration
@@ -4950,6 +4943,7 @@ bool get_ith_parameter_of(const MetaFunctionEvalContext &EvalCtx) {
     // etc.
     return SetAndSucceed(*EvalCtx.Result, makeReflection(TPL->getParam(idx)));
   }
+  case ReflectionKind::Null:
   case ReflectionKind::Object:
   case ReflectionKind::Value:
   case ReflectionKind::Namespace:
