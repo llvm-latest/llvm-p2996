@@ -3672,7 +3672,7 @@ public:
                            ArrayRef<const Attr *> Attrs = {});
 
   void EmitCXXExpansionStmt(const CXXExpansionStmt &S,
-                            ArrayRef<const Attr *> Attrs = std::nullopt);
+                            ArrayRef<const Attr *> Attrs = {});
 
   /// Controls insertion of cancellation exit blocks in worksharing constructs.
   class OMPCancelStackRAII {
