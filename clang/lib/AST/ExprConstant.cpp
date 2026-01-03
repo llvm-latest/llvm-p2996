@@ -1,6 +1,7 @@
 //===--- ExprConstant.cpp - Expression Constant Evaluator -----------------===//
 //
 // Copyright 2024 Bloomberg Finance L.P.
+// Copyright 2026 Yukino Hayakawa
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -8937,13 +8938,16 @@ bool ExprEvaluatorBase<Derived>::VisitCXXMetafunctionExpr(
   // Evaluate the metafunction.
   APValue Result;
   const CXXMetafunctionExpr::ImplFn &Implementation = E->getImpl();
-  if (Implementation(Result, Evaluator, Diagnoser, AllowInjection,
-                     E->getResultType(), Info.CurrentCall->CallRange, Args,
-                     Info.ContainingDecl)) {
-    bool Result = Error(E);
+  // ASTContext and MetaActions only known by the implementing metafunction.
+  MetaFunctionEvalContext EvalContext(
+      &Result, nullptr, nullptr, Evaluator, Diagnoser, AllowInjection,
+      E->getResultType(), Info.CurrentCall->CallRange, Args,
+      Info.ContainingDecl);
+  if (Implementation(EvalContext)) {
+    bool EvalResult = Error(E);
     Info.addNotes(Diagnostics);
 
-    return Result;
+    return EvalResult;
   }
   return DerivedSuccess(Result, E);
 }

@@ -20,8 +20,8 @@
 #include "clang/AST/ASTContext.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/MetaActions.h"
-#include "clang/AST/TypeBase.h"
 #include "clang/AST/MetaFunctionBase.h"
+#include "clang/AST/TypeBase.h"
 
 namespace clang {
 
@@ -39,19 +39,11 @@ public:
     MFRK_maxNum, // sentinel
   };
 
-  using EvaluateFn = CXXMetafunctionExpr::EvaluateFn;
-  using DiagnoseFn = CXXMetafunctionExpr::DiagnoseFn;
-
 private:
-  // todo [Yukino:This might be too verbose. Consider using a context object.]
-  using impl_fn_t = bool (*)(APValue &Result, ASTContext &C, MetaActions &Meta,
-                             EvaluateFn Evaluator, DiagnoseFn Diagnoser,
-                             bool AllowInjection, QualType ResultType,
-                             SourceRange Range, ArrayRef<Expr *> Args,
-                             Decl *ContainingDecl);
+  using impl_fn_t = MetaFunctionImplSignature;
 
   // 8 bytes
-  impl_fn_t ImplFn;
+  impl_fn_t *ImplFn = nullptr;
   // 4 bytes
   ResultKind Kind;
   std::uint8_t MinArgs;
@@ -66,15 +58,10 @@ public:
         ID(ID) {}
 
   ResultKind getResultKind() const { return Kind; }
-
   std::uint8_t getMinArgs() const { return MinArgs; }
-
   std::uint8_t getMaxArgs() const { return MaxArgs; }
 
-  bool evaluate(APValue &Result, ASTContext &C, MetaActions &Meta,
-                EvaluateFn Evaluator, DiagnoseFn Diagnoser, bool AllowInjection,
-                QualType ResultType, SourceRange Range, ArrayRef<Expr *> Args,
-                Decl *ContainingDecl) const;
+  bool evaluate(const MetaFunctionEvalContext &EvalCtx) const;
 
   // Get a pointer to the metafunction with the given ID.
   // Returns true in the case of error (i.e., no such metafunction exists).

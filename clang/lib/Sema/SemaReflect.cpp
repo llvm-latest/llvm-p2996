@@ -1,6 +1,7 @@
 //===--- SemaReflect.cpp - Semantic Analysis for Reflection ---------------===//
 //
 // Copyright 2024 Bloomberg Finance L.P.
+// Copyright 2026 Yukino Hayakawa
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -1079,18 +1080,13 @@ Sema::getMetafunctionCb(MetaFunctionID FnID) {
     Metafunction::Lookup(FnID, Metafn);
 
     assert(Metafn);
-    auto MetafnImpl =
-        std::make_unique<CXXMetafunctionExpr::ImplFn>(std::function(
-            [this,
-             Metafn](APValue &Result, CXXMetafunctionExpr::EvaluateFn EvalFn,
-                     CXXMetafunctionExpr::DiagnoseFn DiagFn,
-                     bool AllowInjection, QualType ResultTy, SourceRange Range,
-                     ArrayRef<Expr *> Args, Decl *ContainingDecl) -> bool {
-              MetaActionsImpl Actions(*this);
-              return Metafn->evaluate(Result, Context, Actions, EvalFn, DiagFn,
-                                      AllowInjection, ResultTy, Range, Args,
-                                      ContainingDecl);
-            }));
+    auto MetafnImpl = std::make_unique<CXXMetafunctionExpr::ImplFn>(
+        [this, Metafn](MetaFunctionEvalContext EvalCtx) -> bool {
+          MetaActionsImpl Actions(*this);
+          EvalCtx.C = &Context;
+          EvalCtx.Meta = &Actions;
+          return Metafn->evaluate(EvalCtx);
+        });
     ImplIt =
         MetafunctionImplCbs.try_emplace(UnderlyingID, std::move(MetafnImpl))
             .first;

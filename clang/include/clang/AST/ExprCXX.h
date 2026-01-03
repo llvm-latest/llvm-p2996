@@ -1,6 +1,7 @@
 //===- ExprCXX.h - Classes for representing expressions ---------*- C++ -*-===//
 //
 // Copyright 2024 Bloomberg Finance L.P.
+// Copyright 2026 Yukino Hayakawa
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -28,6 +29,7 @@
 #include "clang/AST/NestedNameSpecifier.h"
 #include "clang/AST/OperationKinds.h"
 #include "clang/AST/Reflection.h"
+#include "clang/AST/MetaFunctionBase.h"
 #include "clang/AST/SpliceSpecifier.h"
 #include "clang/AST/Stmt.h"
 #include "clang/AST/StmtCXX.h"
@@ -5593,21 +5595,9 @@ enum class MetaFunctionID : std::uint8_t;
 // Yukino: Rearranged members to pack the class more tightly.
 class CXXMetafunctionExpr : public Expr {
 public:
-  // Type of callback provided to executing metafunctinons to help evaluate an
-  // expression in the current constant evaluation context.
-  using EvaluateFn = std::function<bool(APValue &, const Expr *,
-                                        bool ConvertToRValue)>;
-
-  // Type of callback provided to report a diagnistc to the evaluation context.
-  using DiagnoseFn = std::function<PartialDiagnostic &(SourceLocation,
-                                                       unsigned)>;
-
   // Type of callback used to evaluate the metafunction during constant
   // evaluation. This will be a lambda with the bound 'Sema' object.
-  // todo Yukino: Consider using a context object.
-  using ImplFn = std::function<bool(APValue &, EvaluateFn, DiagnoseFn, bool,
-                                    QualType, SourceRange, ArrayRef<Expr *>,
-                                    Decl *ContainingDecl)>;
+  using ImplFn = std::function<MetaFunctionImplSignature>;
 
 private:
   // An unowned reference to a callback for executing the metafunction at
@@ -5657,13 +5647,13 @@ public:
   void setResultType(QualType QT) { ResultType = QT; }
 
   // TODO(P2996): Consider implementing this with trailing objects.
-  unsigned getNumArgs() const { return NumArgs; }
+  std::uint8_t getNumArgs() const { return NumArgs; }
 
-  Expr *getArg(unsigned I) const {
+  Expr *getArg(std::uint8_t I) const {
     assert(I < NumArgs && "argument out-of-range");
     return cast<Expr>(Args[I]);
   }
-  void setArgs(Expr **NewArgs, unsigned Count) {
+  void setArgs(Expr **NewArgs, std::uint8_t Count) {
     Args = NewArgs;
     NumArgs = Count;
   }

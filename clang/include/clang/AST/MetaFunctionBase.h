@@ -11,7 +11,7 @@
 #ifndef LLVM_CLANG_AST_METAFUNCTION_BASE_H
 #define LLVM_CLANG_AST_METAFUNCTION_BASE_H
 
-#include <cstdint>
+#include "clang/Basic/SourceLocation.h"
 
 namespace clang {
 
@@ -146,6 +146,56 @@ enum class MetaFunctionID : std::uint8_t {
 
   sentinel = 133,
 };
+
+class APValue;
+class ASTContext;
+class MetaActions;
+class Expr;
+class PartialDiagnostic;
+
+// Type of callback provided to executing metafunctions to help evaluate an
+// expression in the current constant evaluation context.
+using MetaFunctionEvaluateFn =
+    llvm::function_ref<bool(APValue &, const Expr *, bool ConvertToRValue)>;
+
+// Type of callback provided to report a diagnostic to the evaluation context.
+using MetaFunctionDiagnoseFn =
+    llvm::function_ref<PartialDiagnostic &(SourceLocation, unsigned)>;
+
+struct MetaFunctionEvalContext {
+  APValue *Result = nullptr;
+  ASTContext *C = nullptr;
+  MetaActions *Meta = nullptr;
+  Decl *ContainingDecl = nullptr;
+  MetaFunctionEvaluateFn Evaluator;
+  MetaFunctionDiagnoseFn Diagnoser;
+  QualType ResultTy;
+  SourceRange Range;
+  ArrayRef<Expr *> Args;
+  bool AllowInjection = false;
+
+  MetaFunctionEvalContext(APValue *Result, ASTContext *C, MetaActions *Meta,
+                          MetaFunctionEvaluateFn Evaluator,
+                          MetaFunctionDiagnoseFn Diagnoser, bool AllowInjection,
+                          QualType ResultTy, SourceRange Range,
+                          ArrayRef<Expr *> Args, Decl *ContainingDecl)
+      : Result(Result), C(C), Meta(Meta), ContainingDecl(ContainingDecl),
+        Evaluator(std::move(Evaluator)), Diagnoser(std::move(Diagnoser)),
+        ResultTy(std::move(ResultTy)), Range(std::move(Range)),
+        Args(std::move(Args)), AllowInjection(AllowInjection) {}
+
+  auto getScratchContextCreator() const {
+    return [this, ScratchValue = APValue(),
+            SwallowDiags = MetaFunctionDiagnoseFn()]() mutable {
+      return MetaFunctionEvalContext(&ScratchValue, C, Meta, Evaluator,
+                                     SwallowDiags, AllowInjection, ResultTy,
+                                     Range, Args, ContainingDecl);
+    };
+  }
+};
+
+bool MetaFunctionImplPrototype(const MetaFunctionEvalContext &EvalCtx);
+using MetaFunctionImplSignature = decltype(MetaFunctionImplPrototype);
 
 } // namespace clang
 
