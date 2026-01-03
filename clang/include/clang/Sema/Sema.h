@@ -1,6 +1,7 @@
 //===--- Sema.h - Semantic Analysis & AST Building --------------*- C++ -*-===//
 //
 // Copyright 2024 Bloomberg Finance L.P.
+// Copyright 2026 Yukino Hayakawa
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -196,6 +197,8 @@ class TypeLocBuilder;
 class UnresolvedSetImpl;
 class UnresolvedSetIterator;
 class VisibleDeclConsumer;
+
+enum class MetaFunctionID : std::uint8_t;
 
 namespace sema {
 class BlockScopeInfo;
@@ -15683,7 +15686,7 @@ public:
   ExprResult BuildCXXMetafunctionExpr(SourceLocation KwLoc,
                                       SourceLocation LParenLoc,
                                       SourceLocation RParenLoc,
-                                      unsigned MetaFnID,
+                                      MetaFunctionID MetaFnID,
                                       const CXXMetafunctionExpr::ImplFn &Impl,
                                       SmallVectorImpl<Expr *> &Args);
 
@@ -15721,7 +15724,7 @@ public:
 
   DeclContext *TryFindDeclContextOf(SpliceSpecifier *Splice);
 
-  const CXXMetafunctionExpr::ImplFn &getMetafunctionCb(unsigned FnID);
+  const CXXMetafunctionExpr::ImplFn &getMetafunctionCb(MetaFunctionID FnID);
 
 private:
   // Lambdas having bound references to this Sema object, used to evaluate

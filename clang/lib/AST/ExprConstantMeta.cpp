@@ -1,6 +1,7 @@
 //===-- ExprConstantMeta.cpp - Functions targeting reflections --*- C++ -*-===//
 //
 // Copyright 2025 Bloomberg Finance L.P.
+// Copyright 2026 Yukino Hayakawa
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
@@ -726,156 +727,192 @@ static bool reflect_invoke(APValue &Result, ASTContext &C, MetaActions &Meta,
 // header file.
 // -----------------------------------------------------------------------------
 
+#define SEMA_METAFUNCTION(Kind, MinArgs, MaxArgs, Impl) \
+  { Metafunction::MFRK_##Kind, MinArgs, MaxArgs, MetaFunctionID::Impl, Impl }
+#define SEMA_METAFUNCTION_DUMMY(Id) \
+  { Metafunction::MFRK_maxNum, 0, 0, MetaFunctionID::invalid, nullptr }
+
 static constexpr Metafunction Metafunctions[] = {
   // Kind, MinArgs, MaxArgs, Impl
 
+  SEMA_METAFUNCTION_DUMMY(0),
+
   // non-exposed metafunctions
-  { Metafunction::MFRK_metaInfo, 2, 2, get_begin_enumerator_decl_of },
-  { Metafunction::MFRK_metaInfo, 2, 2, get_next_enumerator_decl_of },
-  { Metafunction::MFRK_metaInfo, 3, 3, get_ith_base_of },
-  { Metafunction::MFRK_metaInfo, 3, 3, get_ith_template_argument_of },
-  { Metafunction::MFRK_metaInfo, 2, 2, get_begin_member_decl_of },
-  { Metafunction::MFRK_metaInfo, 2, 2, get_next_member_decl_of },
-  { Metafunction::MFRK_bool, 1, 1, is_structural_type },
-  { Metafunction::MFRK_metaInfo, 1, 1, map_decl_to_entity },
+  SEMA_METAFUNCTION(metaInfo, 2, 2, get_begin_enumerator_decl_of),
+  SEMA_METAFUNCTION(metaInfo, 2, 2, get_next_enumerator_decl_of),
+  SEMA_METAFUNCTION(metaInfo, 3, 3, get_ith_base_of),
+  SEMA_METAFUNCTION(metaInfo, 3, 3, get_ith_template_argument_of),
+  SEMA_METAFUNCTION(metaInfo, 2, 2, get_begin_member_decl_of),
+  SEMA_METAFUNCTION(metaInfo, 2, 2, get_next_member_decl_of),
+  SEMA_METAFUNCTION(bool, 1, 1, is_structural_type),
+  SEMA_METAFUNCTION(metaInfo, 1, 1, map_decl_to_entity),
+
+  SEMA_METAFUNCTION_DUMMY(9),
+  SEMA_METAFUNCTION_DUMMY(10),
 
   // exposed metafunctions
-  { Metafunction::MFRK_spliceFromArg, 4, 4, identifier_of },
-  { Metafunction::MFRK_bool, 1, 1, has_identifier },
-  { Metafunction::MFRK_sizeT, 1, 1, operator_of },
-  { Metafunction::MFRK_sourceLoc, 1, 1, source_location_of },
-  { Metafunction::MFRK_metaInfo, 1, 1, type_of },
-  { Metafunction::MFRK_metaInfo, 1, 1, parent_of },
-  { Metafunction::MFRK_metaInfo, 1, 1, underlying_entity_of },
-  { Metafunction::MFRK_metaInfo, 1, 1, proxied_entity_of },
-  { Metafunction::MFRK_metaInfo, 1, 1, object_of },
-  { Metafunction::MFRK_metaInfo, 1, 1, constant_of },
-  { Metafunction::MFRK_metaInfo, 1, 1, template_of },
-  { Metafunction::MFRK_metaInfo, 4, 4, substitute },
-  { Metafunction::MFRK_spliceFromArg, 2, 2, extract },
-  { Metafunction::MFRK_bool, 1, 1, is_public },
-  { Metafunction::MFRK_bool, 1, 1, is_protected },
-  { Metafunction::MFRK_bool, 1, 1, is_private },
-  { Metafunction::MFRK_bool, 1, 1, is_virtual },
-  { Metafunction::MFRK_bool, 1, 1, is_pure_virtual },
-  { Metafunction::MFRK_bool, 1, 1, is_override },
-  { Metafunction::MFRK_bool, 1, 1, is_deleted },
-  { Metafunction::MFRK_bool, 1, 1, is_defaulted },
-  { Metafunction::MFRK_bool, 1, 1, is_explicit },
-  { Metafunction::MFRK_bool, 1, 1, is_noexcept },
-  { Metafunction::MFRK_bool, 1, 1, is_bit_field },
-  { Metafunction::MFRK_bool, 1, 1, is_enumerator },
-  { Metafunction::MFRK_bool, 1, 1, is_final },
-  { Metafunction::MFRK_bool, 1, 1, is_const },
-  { Metafunction::MFRK_bool, 1, 1, is_volatile },
-  { Metafunction::MFRK_bool, 1, 1, is_mutable_member },
-  { Metafunction::MFRK_bool, 1, 1, is_lvalue_reference_qualified },
-  { Metafunction::MFRK_bool, 1, 1, is_rvalue_reference_qualified },
-  { Metafunction::MFRK_bool, 1, 1, has_static_storage_duration },
-  { Metafunction::MFRK_bool, 1, 1, has_thread_storage_duration },
-  { Metafunction::MFRK_bool, 1, 1, has_automatic_storage_duration },
-  { Metafunction::MFRK_bool, 1, 1, has_internal_linkage },
-  { Metafunction::MFRK_bool, 1, 1, has_module_linkage },
-  { Metafunction::MFRK_bool, 1, 1, has_external_linkage },
-  { Metafunction::MFRK_bool, 1, 1, has_linkage },
-  { Metafunction::MFRK_bool, 1, 1, is_class_member },
-  { Metafunction::MFRK_bool, 1, 1, is_namespace_member },
-  { Metafunction::MFRK_bool, 1, 1, is_nonstatic_data_member },
-  { Metafunction::MFRK_bool, 1, 1, is_static_member },
-  { Metafunction::MFRK_bool, 1, 1, is_base },
-  { Metafunction::MFRK_bool, 1, 1, is_data_member_spec },
-  { Metafunction::MFRK_bool, 1, 1, is_namespace },
-  { Metafunction::MFRK_bool, 1, 1, is_function },
-  { Metafunction::MFRK_bool, 1, 1, is_variable },
-  { Metafunction::MFRK_bool, 1, 1, is_type },
-  { Metafunction::MFRK_bool, 1, 1, is_alias },
-  { Metafunction::MFRK_bool, 1, 1, is_entity_proxy },
-  { Metafunction::MFRK_bool, 1, 1, is_complete_type },
-  { Metafunction::MFRK_bool, 1, 1, has_complete_definition },
-  { Metafunction::MFRK_bool, 1, 1, is_enumerable_type },
-  { Metafunction::MFRK_bool, 1, 1, is_template },
-  { Metafunction::MFRK_bool, 1, 1, is_function_template },
-  { Metafunction::MFRK_bool, 1, 1, is_variable_template },
-  { Metafunction::MFRK_bool, 1, 1, is_class_template },
-  { Metafunction::MFRK_bool, 1, 1, is_alias_template },
-  { Metafunction::MFRK_bool, 1, 1, is_conversion_function_template },
-  { Metafunction::MFRK_bool, 1, 1, is_operator_function_template },
-  { Metafunction::MFRK_bool, 1, 1, is_literal_operator_template },
-  { Metafunction::MFRK_bool, 1, 1, is_constructor_template },
-  { Metafunction::MFRK_bool, 1, 1, is_concept },
-  { Metafunction::MFRK_bool, 1, 1, is_structured_binding },
-  { Metafunction::MFRK_bool, 1, 1, is_value },
-  { Metafunction::MFRK_bool, 1, 1, is_object },
-  { Metafunction::MFRK_bool, 1, 1, has_template_arguments },
-  { Metafunction::MFRK_bool, 1, 1, has_default_member_initializer },
-  { Metafunction::MFRK_bool, 1, 1, is_conversion_function },
-  { Metafunction::MFRK_bool, 1, 1, is_operator_function },
-  { Metafunction::MFRK_bool, 1, 1, is_literal_operator },
-  { Metafunction::MFRK_bool, 1, 1, is_constructor },
-  { Metafunction::MFRK_bool, 1, 1, is_default_constructor },
-  { Metafunction::MFRK_bool, 1, 1, is_copy_constructor },
-  { Metafunction::MFRK_bool, 1, 1, is_move_constructor },
-  { Metafunction::MFRK_bool, 1, 1, is_assignment },
-  { Metafunction::MFRK_bool, 1, 1, is_copy_assignment },
-  { Metafunction::MFRK_bool, 1, 1, is_move_assignment },
-  { Metafunction::MFRK_bool, 1, 1, is_destructor },
-  { Metafunction::MFRK_bool, 1, 1, is_special_member_function },
-  { Metafunction::MFRK_bool, 1, 1, is_user_provided },
-  { Metafunction::MFRK_bool, 1, 1, is_user_declared },
-  { Metafunction::MFRK_metaInfo, 2, 2, reflect_result },
-  { Metafunction::MFRK_metaInfo, 10, 10, data_member_spec },
-  { Metafunction::MFRK_metaInfo, 3, 3, define_aggregate },
-  { Metafunction::MFRK_spliceFromArg, 2, 2, offset_of },
-  { Metafunction::MFRK_sizeT, 1, 1, size_of },
-  { Metafunction::MFRK_spliceFromArg, 2, 2, bit_offset_of },
-  { Metafunction::MFRK_sizeT, 1, 1, bit_size_of },
-  { Metafunction::MFRK_sizeT, 1, 1, alignment_of },
+  SEMA_METAFUNCTION(spliceFromArg, 4, 4, identifier_of),
+  SEMA_METAFUNCTION(bool, 1, 1, has_identifier),
+  SEMA_METAFUNCTION(sizeT, 1, 1, operator_of),
+  SEMA_METAFUNCTION(sourceLoc, 1, 1, source_location_of),
+  SEMA_METAFUNCTION(metaInfo, 1, 1, type_of),
+  SEMA_METAFUNCTION(metaInfo, 1, 1, parent_of),
+  SEMA_METAFUNCTION(metaInfo, 1, 1, underlying_entity_of),
+  SEMA_METAFUNCTION(metaInfo, 1, 1, proxied_entity_of),
+  SEMA_METAFUNCTION(metaInfo, 1, 1, object_of),
+  SEMA_METAFUNCTION(metaInfo, 1, 1, constant_of),
+  SEMA_METAFUNCTION(metaInfo, 1, 1, template_of),
+  SEMA_METAFUNCTION(metaInfo, 4, 4, substitute),
+  SEMA_METAFUNCTION(spliceFromArg, 2, 2, extract),
+  SEMA_METAFUNCTION(bool, 1, 1, is_public),
+  SEMA_METAFUNCTION(bool, 1, 1, is_protected),
+  SEMA_METAFUNCTION(bool, 1, 1, is_private),
+  SEMA_METAFUNCTION(bool, 1, 1, is_virtual),
+  SEMA_METAFUNCTION(bool, 1, 1, is_pure_virtual),
+  SEMA_METAFUNCTION(bool, 1, 1, is_override),
+  SEMA_METAFUNCTION(bool, 1, 1, is_deleted),
+  SEMA_METAFUNCTION(bool, 1, 1, is_defaulted),
+  SEMA_METAFUNCTION(bool, 1, 1, is_explicit),
+  SEMA_METAFUNCTION(bool, 1, 1, is_noexcept),
+  SEMA_METAFUNCTION(bool, 1, 1, is_bit_field),
+  SEMA_METAFUNCTION(bool, 1, 1, is_enumerator),
+  SEMA_METAFUNCTION(bool, 1, 1, is_final),
+  SEMA_METAFUNCTION(bool, 1, 1, is_const),
+  SEMA_METAFUNCTION(bool, 1, 1, is_volatile),
+  SEMA_METAFUNCTION(bool, 1, 1, is_mutable_member),
+  SEMA_METAFUNCTION(bool, 1, 1, is_lvalue_reference_qualified),
+  SEMA_METAFUNCTION(bool, 1, 1, is_rvalue_reference_qualified),
+  SEMA_METAFUNCTION(bool, 1, 1, has_static_storage_duration),
+  SEMA_METAFUNCTION(bool, 1, 1, has_thread_storage_duration),
+  SEMA_METAFUNCTION(bool, 1, 1, has_automatic_storage_duration),
+  SEMA_METAFUNCTION(bool, 1, 1, has_internal_linkage),
+  SEMA_METAFUNCTION(bool, 1, 1, has_module_linkage),
+  SEMA_METAFUNCTION(bool, 1, 1, has_external_linkage),
+  SEMA_METAFUNCTION(bool, 1, 1, has_linkage),
+  SEMA_METAFUNCTION(bool, 1, 1, is_class_member),
+  SEMA_METAFUNCTION(bool, 1, 1, is_namespace_member),
+  SEMA_METAFUNCTION(bool, 1, 1, is_nonstatic_data_member),
+  SEMA_METAFUNCTION(bool, 1, 1, is_static_member),
+  SEMA_METAFUNCTION(bool, 1, 1, is_base),
+  SEMA_METAFUNCTION(bool, 1, 1, is_data_member_spec),
+  SEMA_METAFUNCTION(bool, 1, 1, is_namespace),
+  SEMA_METAFUNCTION(bool, 1, 1, is_function),
+  SEMA_METAFUNCTION(bool, 1, 1, is_variable),
+  SEMA_METAFUNCTION(bool, 1, 1, is_type),
+  SEMA_METAFUNCTION(bool, 1, 1, is_alias),
+  SEMA_METAFUNCTION(bool, 1, 1, is_entity_proxy),
+  SEMA_METAFUNCTION(bool, 1, 1, is_complete_type),
+  SEMA_METAFUNCTION(bool, 1, 1, has_complete_definition),
+  SEMA_METAFUNCTION(bool, 1, 1, is_enumerable_type),
+  SEMA_METAFUNCTION(bool, 1, 1, is_template),
+  SEMA_METAFUNCTION(bool, 1, 1, is_function_template),
+  SEMA_METAFUNCTION(bool, 1, 1, is_variable_template),
+  SEMA_METAFUNCTION(bool, 1, 1, is_class_template),
+  SEMA_METAFUNCTION(bool, 1, 1, is_alias_template),
+  SEMA_METAFUNCTION(bool, 1, 1, is_conversion_function_template),
+  SEMA_METAFUNCTION(bool, 1, 1, is_operator_function_template),
+  SEMA_METAFUNCTION(bool, 1, 1, is_literal_operator_template),
+  SEMA_METAFUNCTION(bool, 1, 1, is_constructor_template),
+  SEMA_METAFUNCTION(bool, 1, 1, is_concept),
+  SEMA_METAFUNCTION(bool, 1, 1, is_structured_binding),
+  SEMA_METAFUNCTION(bool, 1, 1, is_value),
+  SEMA_METAFUNCTION(bool, 1, 1, is_object),
+  SEMA_METAFUNCTION(bool, 1, 1, has_template_arguments),
+  SEMA_METAFUNCTION(bool, 1, 1, has_default_member_initializer),
+  SEMA_METAFUNCTION(bool, 1, 1, is_conversion_function),
+  SEMA_METAFUNCTION(bool, 1, 1, is_operator_function),
+  SEMA_METAFUNCTION(bool, 1, 1, is_literal_operator),
+  SEMA_METAFUNCTION(bool, 1, 1, is_constructor),
+  SEMA_METAFUNCTION(bool, 1, 1, is_default_constructor),
+  SEMA_METAFUNCTION(bool, 1, 1, is_copy_constructor),
+  SEMA_METAFUNCTION(bool, 1, 1, is_move_constructor),
+  SEMA_METAFUNCTION(bool, 1, 1, is_assignment),
+  SEMA_METAFUNCTION(bool, 1, 1, is_copy_assignment),
+  SEMA_METAFUNCTION(bool, 1, 1, is_move_assignment),
+  SEMA_METAFUNCTION(bool, 1, 1, is_destructor),
+  SEMA_METAFUNCTION(bool, 1, 1, is_special_member_function),
+  SEMA_METAFUNCTION(bool, 1, 1, is_user_provided),
+  SEMA_METAFUNCTION(bool, 1, 1, is_user_declared),
+  SEMA_METAFUNCTION(metaInfo, 2, 2, reflect_result),
+  SEMA_METAFUNCTION(metaInfo, 10, 10, data_member_spec),
+  SEMA_METAFUNCTION(metaInfo, 3, 3, define_aggregate),
+  SEMA_METAFUNCTION(spliceFromArg, 2, 2, offset_of),
+  SEMA_METAFUNCTION(sizeT, 1, 1, size_of),
+  SEMA_METAFUNCTION(spliceFromArg, 2, 2, bit_offset_of),
+  SEMA_METAFUNCTION(sizeT, 1, 1, bit_size_of),
+  SEMA_METAFUNCTION(sizeT, 1, 1, alignment_of),
+
+  SEMA_METAFUNCTION_DUMMY(101),
+  SEMA_METAFUNCTION_DUMMY(102),
+  SEMA_METAFUNCTION_DUMMY(103),
+  SEMA_METAFUNCTION_DUMMY(104),
+  SEMA_METAFUNCTION_DUMMY(105),
+  SEMA_METAFUNCTION_DUMMY(106),
+  SEMA_METAFUNCTION_DUMMY(107),
+  SEMA_METAFUNCTION_DUMMY(108),
+  SEMA_METAFUNCTION_DUMMY(109),
+  SEMA_METAFUNCTION_DUMMY(110),
 
   // P3096 metafunction extensions
-  { Metafunction::MFRK_metaInfo, 3, 3, get_ith_parameter_of },
-  { Metafunction::MFRK_bool, 1, 1, has_ellipsis_parameter },
-  { Metafunction::MFRK_bool, 1, 1, has_default_argument },
-  { Metafunction::MFRK_bool, 1, 1, is_explicit_object_parameter },
-  { Metafunction::MFRK_bool, 1, 1, is_function_parameter },
-  { Metafunction::MFRK_metaInfo, 1, 1, return_type_of },
-  { Metafunction::MFRK_metaInfo, 1, 1, variable_of },
+  SEMA_METAFUNCTION(metaInfo, 3, 3, get_ith_parameter_of),
+  SEMA_METAFUNCTION(bool, 1, 1, has_ellipsis_parameter),
+  SEMA_METAFUNCTION(bool, 1, 1, has_default_argument),
+  SEMA_METAFUNCTION(bool, 1, 1, is_explicit_object_parameter),
+  SEMA_METAFUNCTION(bool, 1, 1, is_function_parameter),
+  SEMA_METAFUNCTION(metaInfo, 1, 1, return_type_of),
+  SEMA_METAFUNCTION(metaInfo, 1, 1, variable_of),
+
+  SEMA_METAFUNCTION_DUMMY(118),
+  SEMA_METAFUNCTION_DUMMY(119),
+  SEMA_METAFUNCTION_DUMMY(120),
 
   // P3394 annotation metafunction extensions
-  { Metafunction::MFRK_metaInfo, 3, 3, get_ith_annotation_of },
-  { Metafunction::MFRK_bool, 1, 1, is_annotation },
-  { Metafunction::MFRK_metaInfo, 2, 2, annotate },
+  SEMA_METAFUNCTION(metaInfo, 3, 3, get_ith_annotation_of),
+  SEMA_METAFUNCTION(bool, 1, 1, is_annotation),
+  SEMA_METAFUNCTION(metaInfo, 2, 2, annotate),
+
+  SEMA_METAFUNCTION_DUMMY(124),
+  SEMA_METAFUNCTION_DUMMY(125),
 
   // P3493 accessibility extensions
-  { Metafunction::MFRK_metaInfo, 0, 0, current_access_context },
-  { Metafunction::MFRK_bool, 3, 3, is_accessible },
+  SEMA_METAFUNCTION(metaInfo, 0, 0, current_access_context),
+  SEMA_METAFUNCTION(bool, 3, 3, is_accessible),
+  
+  SEMA_METAFUNCTION_DUMMY(128),
+  SEMA_METAFUNCTION_DUMMY(129),
+  SEMA_METAFUNCTION_DUMMY(130),
 
   // Other bespoke functions (not proposed at this time)
-  { Metafunction::MFRK_bool, 1, 1, is_access_specified },
-  { Metafunction::MFRK_metaInfo, 5, 5, reflect_invoke },
+  SEMA_METAFUNCTION(bool, 1, 1, is_access_specified),
+  SEMA_METAFUNCTION(metaInfo, 5, 5, reflect_invoke),
 };
-constexpr const unsigned NumMetafunctions = sizeof(Metafunctions) /
-                                            sizeof(Metafunction);
 
+#undef SEMA_METAFUNCTION_DUMMY
+#undef SEMA_METAFUNCTION
+
+constexpr std::size_t NumMetafunctions =
+    static_cast<std::size_t>(MetaFunctionID::sentinel);
+static_assert(NumMetafunctions == sizeof(Metafunctions) / sizeof(Metafunction));
 
 // -----------------------------------------------------------------------------
 // class Metafunction implementation
 // -----------------------------------------------------------------------------
 
-bool Metafunction::evaluate(APValue &Result, ASTContext &C,
-                            MetaActions &Meta, EvalFn Evaluator,
-                            DiagFn Diagnoser, bool AllowInjection,
-                            QualType ResultTy, SourceRange Range,
-                            ArrayRef<Expr *> Args, Decl *ContainingDecl) const {
+bool Metafunction::evaluate(APValue &Result, ASTContext &C, MetaActions &Meta,
+                            EvalFn Evaluator, DiagFn Diagnoser,
+                            bool AllowInjection, QualType ResultTy,
+                            SourceRange Range, ArrayRef<Expr *> Args,
+                            Decl *ContainingDecl) const {
   return ImplFn(Result, C, Meta, Evaluator, Diagnoser, AllowInjection, ResultTy,
                 Range, Args, ContainingDecl);
 }
 
-bool Metafunction::Lookup(unsigned ID, const Metafunction *&result) {
-  if (ID >= NumMetafunctions)
+bool Metafunction::Lookup(MetaFunctionID ID, const Metafunction *&result) {
+  if (llvm::to_underlying(ID) >= NumMetafunctions)
     return true;
 
-  result = &Metafunctions[ID];
-  return false;
+  result = &Metafunctions[llvm::to_underlying(ID)];
+  return result->ImplFn == nullptr;
 }
 
 

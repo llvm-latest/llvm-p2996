@@ -1029,7 +1029,8 @@ ExprResult Sema::ActOnCXXMetafunction(SourceLocation KwLoc,
       return ExprError();
     }
   }
-  unsigned FnID = static_cast<unsigned>(FnIDArgRV.Val.getInt().getExtValue());
+
+  auto FnID = static_cast<MetaFunctionID>(FnIDArgRV.Val.getInt().getExtValue());
 
   // Look up the corresponding Metafunction object.
   const Metafunction *Metafn;
@@ -1038,10 +1039,21 @@ ExprResult Sema::ActOnCXXMetafunction(SourceLocation KwLoc,
     return ExprError();
   }
 
+  // Get the human-readable name directly from the AST.
+  // APValue::getAsString fails on anonymous enums (prints int).
+  std::string MetafnName;
+  if (auto *DRE = dyn_cast<DeclRefExpr>(FnIDArg->IgnoreParenImpCasts())) {
+    MetafnName = DRE->getDecl()->getNameAsString();
+  } else {
+    // Fallback
+    MetafnName = FnIDArgRV.Val.getAsString(Context, FnIDArg->getType());
+  }
+
   // Validate the remaining arguments.
   if (Args.size() < Metafn->getMinArgs() + 1 ||
       Args.size() > Metafn->getMaxArgs() + 1) {
-    Diag(KwLoc, diag::err_metafunction_arity)
+    Diag(FnIDArg->getExprLoc(), diag::err_metafunction_arity)
+        << (MetafnName)
         << (Metafn->getMinArgs() + 1)
         << (Metafn->getMaxArgs() + 1)
         << Args.size();
@@ -1058,27 +1070,30 @@ ExprResult Sema::ActOnCXXMetafunction(SourceLocation KwLoc,
                                   FnID, ImplIt, Args);
 }
 
-const CXXMetafunctionExpr::ImplFn &Sema::getMetafunctionCb(unsigned FnID) {
-  auto ImplIt = MetafunctionImplCbs.find(FnID);
+const CXXMetafunctionExpr::ImplFn &
+Sema::getMetafunctionCb(MetaFunctionID FnID) {
+  auto UnderlyingID = llvm::to_underlying(FnID);
+  auto ImplIt = MetafunctionImplCbs.find(UnderlyingID);
   if (ImplIt == MetafunctionImplCbs.end()) {
     const Metafunction *Metafn;
     Metafunction::Lookup(FnID, Metafn);
 
     assert(Metafn);
-    auto MetafnImpl = std::make_unique<CXXMetafunctionExpr::ImplFn>(
-        std::function(
-            [this, Metafn](APValue &Result,
-                           CXXMetafunctionExpr::EvaluateFn EvalFn,
-                           CXXMetafunctionExpr::DiagnoseFn DiagFn,
-                           bool AllowInjection, QualType ResultTy,
-                           SourceRange Range, ArrayRef<Expr *> Args,
-                           Decl *ContainingDecl) -> bool {
+    auto MetafnImpl =
+        std::make_unique<CXXMetafunctionExpr::ImplFn>(std::function(
+            [this,
+             Metafn](APValue &Result, CXXMetafunctionExpr::EvaluateFn EvalFn,
+                     CXXMetafunctionExpr::DiagnoseFn DiagFn,
+                     bool AllowInjection, QualType ResultTy, SourceRange Range,
+                     ArrayRef<Expr *> Args, Decl *ContainingDecl) -> bool {
               MetaActionsImpl Actions(*this);
               return Metafn->evaluate(Result, Context, Actions, EvalFn, DiagFn,
                                       AllowInjection, ResultTy, Range, Args,
                                       ContainingDecl);
             }));
-    ImplIt = MetafunctionImplCbs.try_emplace(FnID, std::move(MetafnImpl)).first;
+    ImplIt =
+        MetafunctionImplCbs.try_emplace(UnderlyingID, std::move(MetafnImpl))
+            .first;
   }
 
   return *ImplIt->second;
@@ -1380,9 +1395,9 @@ ExprResult Sema::BuildCXXReflectExpr(SourceLocation OperatorLoc,
 }
 
 ExprResult Sema::BuildCXXMetafunctionExpr(
-      SourceLocation KwLoc, SourceLocation LParenLoc, SourceLocation RParenLoc,
-      unsigned MetaFnID, const CXXMetafunctionExpr::ImplFn &Impl,
-      SmallVectorImpl<Expr *> &Args) {
+    SourceLocation KwLoc, SourceLocation LParenLoc, SourceLocation RParenLoc,
+    MetaFunctionID MetaFnID, const CXXMetafunctionExpr::ImplFn &Impl,
+    SmallVectorImpl<Expr *> &Args) {
   // Look up the corresponding Metafunction object.
   const Metafunction *MetaFn;
   if (Metafunction::Lookup(MetaFnID, MetaFn)) {
@@ -1440,6 +1455,8 @@ ExprResult Sema::BuildCXXMetafunctionExpr(
       Result = ER.Val.getReflectedType().getCanonicalType();
       return false;
     }
+    case Metafunction::MFRK_maxNum:
+      llvm_unreachable("this is a placeholder metafunction");
     }
     llvm_unreachable("unknown metafunction result kind");
   };

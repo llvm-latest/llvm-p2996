@@ -5586,8 +5586,11 @@ public:
   }
 };
 
+enum class MetaFunctionID : std::uint8_t;
+
 /// Represents a C++2c "metafunction", a function that operates on one or more
 /// reflections (P2996). Arguments vary by function.
+// Yukino: Rearranged members to pack the class more tightly.
 class CXXMetafunctionExpr : public Expr {
 public:
   // Type of callback provided to executing metafunctinons to help evaluate an
@@ -5601,16 +5604,12 @@ public:
 
   // Type of callback used to evaluate the metafunction during constant
   // evaluation. This will be a lambda with the bound 'Sema' object.
+  // todo Yukino: Consider using a context object.
   using ImplFn = std::function<bool(APValue &, EvaluateFn, DiagnoseFn, bool,
                                     QualType, SourceRange, ArrayRef<Expr *>,
                                     Decl *ContainingDecl)>;
 
 private:
-
-  // The original ID of the corresponding metafunction. Needed to re-create the
-  // expression during Tree Transform.
-  unsigned MetaFnID;
-
   // An unowned reference to a callback for executing the metafunction at
   // constant evaluation time.
   const ImplFn *Impl;
@@ -5619,7 +5618,6 @@ private:
   QualType ResultType;
 
   // Arguments.
-  unsigned NumArgs;
   Expr **Args;
 
   // Source locations.
@@ -5627,26 +5625,30 @@ private:
   SourceLocation LParenLoc;
   SourceLocation RParenLoc;
 
-  CXXMetafunctionExpr(unsigned MetaFnID, const ImplFn &Impl,
-                      QualType ResultType, ExprValueKind VK, Expr ** Args,
-                      unsigned NumArgs, SourceLocation KwLoc,
+  // The original ID of the corresponding metafunction. Needed to re-create the
+  // expression during Tree Transform.
+  MetaFunctionID MetaFnID;
+  
+  // Number of arguments. int8 is more than enough.
+  std::uint8_t NumArgs;
+
+  CXXMetafunctionExpr(MetaFunctionID MetaFnID, const ImplFn &Impl,
+                      QualType ResultType, ExprValueKind VK, Expr **Args,
+                      std::uint8_t NumArgs, SourceLocation KwLoc,
                       SourceLocation LParenLoc, SourceLocation RParenLoc);
 
   CXXMetafunctionExpr(EmptyShell Empty);
 
 public:
-  static CXXMetafunctionExpr *Create(ASTContext &C, unsigned MetaFnID,
-                                     const ImplFn &Impl,
-                                     QualType ResultType,
-                                     ArrayRef<Expr *> Args,
-                                     SourceLocation KwLoc,
-                                     SourceLocation LParenLoc,
-                                     SourceLocation RParenLoc);
+  static CXXMetafunctionExpr *
+  Create(ASTContext &C, MetaFunctionID MetaFnID, const ImplFn &Impl,
+         QualType ResultType, ArrayRef<Expr *> Args, SourceLocation KwLoc,
+         SourceLocation LParenLoc, SourceLocation RParenLoc);
 
   static CXXMetafunctionExpr *CreateEmpty(ASTContext &C);
 
-  unsigned getMetaFnID() const { return MetaFnID; }
-  void setMetaFnID(unsigned ID) { MetaFnID = ID; }
+  MetaFunctionID getMetaFnID() const { return MetaFnID; }
+  void setMetaFnID(MetaFunctionID ID) { MetaFnID = ID; }
 
   const ImplFn &getImpl() const { return *Impl; }
   void setImpl(const ImplFn &Fn) { Impl = &Fn; }

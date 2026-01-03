@@ -506,12 +506,13 @@ void ASTStmtReader::VisitCXXReflectExpr(CXXReflectExpr *E) {
   }
 }
 
+// Must match `ASTStmtWriter::VisitCXXMetafunctionExpr`
 void ASTStmtReader::VisitCXXMetafunctionExpr(CXXMetafunctionExpr *E) {
   VisitExpr(E);
   E->setKwLoc(Record.readSourceLocation());
   E->setLParenLoc(Record.readSourceLocation());
   E->setRParenLoc(Record.readSourceLocation());
-  E->setMetaFnID(Record.readUInt32());
+  E->setMetaFnID(static_cast<MetaFunctionID>(Record.readUInt32()));
   E->setImpl(Record.getMetafunctionCb(E->getMetaFnID()));
   E->setResultType(Record.readQualType());
 

@@ -28,6 +28,8 @@ class OpenACCClause;
 class OMPTraitInfo;
 class OMPChildren;
 
+enum class MetaFunctionID : std::uint8_t;
+
 /// An object for streaming information from a record.
 class ASTRecordReader
     : public serialization::DataStreamBasicReader<ASTRecordReader> {
@@ -369,9 +371,9 @@ public:
     return Reader->getSwitchCaseWithID(ID);
   }
 
-  /// P2996 hack: Use the 'Sema' object from the ASTReader to get a
-  /// metafunction callback during deserialization of a CXXMetafunctionExpr.
-  const CXXMetafunctionExpr::ImplFn &getMetafunctionCb(unsigned ID) {
+  /// TODO P2996 hack: Use the 'Sema' object from the ASTReader to get a
+  ///   metafunction callback during deserialization of a CXXMetafunctionExpr.
+  const CXXMetafunctionExpr::ImplFn &getMetafunctionCb(MetaFunctionID ID) {
     return Reader->getSema()->getMetafunctionCb(ID);
   }
 };

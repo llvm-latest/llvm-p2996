@@ -1993,19 +1993,15 @@ static QualType UnwrapCXXMetafunctionExprReturnType(QualType QT) {
   return QT;
 }
 
-CXXMetafunctionExpr::CXXMetafunctionExpr(unsigned MetaFnID,
-                                         const ImplFn &Impl,
-                                         QualType ResultType,
-                                         ExprValueKind VK,
-                                         Expr ** Args, unsigned NumArgs,
-                                         SourceLocation KwLoc,
-                                         SourceLocation LParenLoc,
-                                         SourceLocation RParenLoc)
-   : Expr(CXXMetafunctionExprClass,
-          UnwrapCXXMetafunctionExprReturnType(ResultType), VK, OK_Ordinary),
-     MetaFnID(MetaFnID), Impl(&Impl), ResultType(ResultType),
-     NumArgs(NumArgs), Args(Args), KwLoc(KwLoc), LParenLoc(LParenLoc),
-     RParenLoc(RParenLoc) {
+CXXMetafunctionExpr::CXXMetafunctionExpr(
+    MetaFunctionID MetaFnID, const ImplFn &Impl, QualType ResultType,
+    ExprValueKind VK, Expr **Args, std::uint8_t NumArgs, SourceLocation KwLoc,
+    SourceLocation LParenLoc, SourceLocation RParenLoc)
+    : Expr(CXXMetafunctionExprClass,
+           UnwrapCXXMetafunctionExprReturnType(ResultType), VK, OK_Ordinary),
+      Impl(&Impl), ResultType(ResultType), Args(Args), KwLoc(KwLoc),
+      LParenLoc(LParenLoc), RParenLoc(RParenLoc), MetaFnID(MetaFnID),
+      NumArgs(NumArgs) {
   setDependence(computeDependence(this));
 }
 
@@ -2014,7 +2010,7 @@ CXXMetafunctionExpr::CXXMetafunctionExpr(EmptyShell Empty)
 }
 
 CXXMetafunctionExpr *CXXMetafunctionExpr::Create(ASTContext &C,
-                                                 unsigned MetaFnID,
+                                                 MetaFunctionID MetaFnID,
                                                  const ImplFn &Impl,
                                                  QualType ResultType,
                                                  ArrayRef<Expr *> Args,

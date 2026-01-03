@@ -3269,7 +3269,7 @@ def err_metafunction_not_constexpr : Error<
 def err_unknown_metafunction : Error<
   "leading argument to __metafunction does not identify a metafunction">;
 def err_metafunction_arity : Error<
-  "expected between %0 and %1 arguments (%2 given)">;
+  "metafunction %0 expected between %1 and %2 arguments (%3 given)">;
 
 def err_consteval_block_not_constexpr : Error<
   "evaluating expression of a consteval block must be a constant expression">;

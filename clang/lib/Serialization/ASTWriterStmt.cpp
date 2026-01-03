@@ -480,12 +480,13 @@ void ASTStmtWriter::VisitCXXReflectExpr(CXXReflectExpr *E) {
   Code = serialization::EXPR_REFLECT;
 }
 
+// Must match `ASTStmtReader::VisitCXXMetafunctionExpr`
 void ASTStmtWriter::VisitCXXMetafunctionExpr(CXXMetafunctionExpr *E) {
   VisitExpr(E);
   Record.AddSourceLocation(E->getKwLoc());
   Record.AddSourceLocation(E->getLParenLoc());
   Record.AddSourceLocation(E->getRParenLoc());
-  Record.writeUInt32(E->getMetaFnID());
+  Record.writeUInt32(llvm::to_underlying(E->getMetaFnID()));
   Record.writeQualType(E->getResultType());
 
   Record.writeUInt32(E->getNumArgs());
