@@ -147,8 +147,9 @@ static Cl::Kinds ClassifyInternal(ASTContext &Ctx, const Expr *E) {
   case Expr::HLSLOutArgExprClass:
   case Expr::ExtractLValueExprClass:
     return Cl::CL_LValue;
-  case Expr::ExplDependentCallExprClass:
-    return ClassifyInternal(Ctx, cast<ExplDependentCallExpr>(E)->getSubExpr());
+  case Expr::ExplicitlyDependentCallExprClass:
+    return ClassifyInternal(Ctx,
+                            cast<ExplicitlyDependentCallExpr>(E)->getSubExpr());
 
     // C++ [expr.prim.general]p1: A string literal is an lvalue.
   case Expr::StringLiteralClass:

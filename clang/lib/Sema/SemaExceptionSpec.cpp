@@ -1160,8 +1160,8 @@ CanThrowResult Sema::canThrow(const Stmt *S) {
     return mergeCanThrow(CT, canSubStmtsThrow(*this, CE));
   }
 
-  case Expr::ExplDependentCallExprClass:
-    return canThrow(cast<ExplDependentCallExpr>(S)->getSubExpr());
+  case Expr::ExplicitlyDependentCallExprClass:
+    return canThrow(cast<ExplicitlyDependentCallExpr>(S)->getSubExpr());
 
   case Expr::CXXConstructExprClass:
   case Expr::CXXTemporaryObjectExprClass: {

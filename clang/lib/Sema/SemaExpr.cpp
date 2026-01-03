@@ -6559,8 +6559,8 @@ ExprResult Sema::ActOnCallExpr(Scope *Scope, Expr *Fn, SourceLocation LParenLoc,
           if (cast<Decl>(DC)->getDescribedTemplateParams())
             ++TemplateDepth;
 
-        Call = BuildExplDependentCallExpr(cast<CallExpr>(Call.get()),
-                                          TemplateDepth);
+        Call = BuildExplicitlyDependentCallExpr(cast<CallExpr>(Call.get()),
+                                                TemplateDepth);
       }
     }
 

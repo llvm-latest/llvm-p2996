@@ -1059,7 +1059,7 @@ ExprDependence clang::computeDependence(ExtractLValueExpr *E) {
   return ExprDependence::None;
 }
 
-ExprDependence clang::computeDependence(ExplDependentCallExpr *E) {
+ExprDependence clang::computeDependence(ExplicitlyDependentCallExpr *E) {
   auto D = E->getDependence();
   if (E->getTemplateDepth() > 0)
     D |= ExprDependence::Value;

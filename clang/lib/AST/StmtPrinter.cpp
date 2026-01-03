@@ -2793,7 +2793,8 @@ void StmtPrinter::VisitExtractLValueExpr(ExtractLValueExpr *S) {
   OS << "ExtractLValue(<Decl>)";
 }
 
-void StmtPrinter::VisitExplDependentCallExpr(ExplDependentCallExpr *S) {
+void StmtPrinter::VisitExplicitlyDependentCallExpr(
+    ExplicitlyDependentCallExpr *S) {
   PrintExpr(S->getSubExpr());
 }
 

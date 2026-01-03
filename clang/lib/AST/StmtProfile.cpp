@@ -2397,7 +2397,8 @@ void StmtProfiler::VisitExtractLValueExpr(const ExtractLValueExpr *E) {
   VisitDecl(E->getValueDecl());
 }
 
-void StmtProfiler::VisitExplDependentCallExpr(const ExplDependentCallExpr *E) {
+void StmtProfiler::VisitExplicitlyDependentCallExpr(
+    const ExplicitlyDependentCallExpr *E) {
   VisitExpr(E);
 }
 

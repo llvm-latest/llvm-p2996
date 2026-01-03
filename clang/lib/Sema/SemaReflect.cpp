@@ -1467,9 +1467,9 @@ ExprResult Sema::BuildCXXMetafunctionExpr(
                                      KwLoc, LParenLoc, RParenLoc);
 }
 
-ExprResult Sema::BuildExplDependentCallExpr(Expr *SubExpr,
-                                            unsigned TemplateDepth) {
-  return ExplDependentCallExpr::Create(Context, SubExpr, TemplateDepth);
+ExprResult Sema::BuildExplicitlyDependentCallExpr(Expr *SubExpr,
+                                                  unsigned TemplateDepth) {
+  return ExplicitlyDependentCallExpr::Create(Context, SubExpr, TemplateDepth);
 }
 
 SpliceResult

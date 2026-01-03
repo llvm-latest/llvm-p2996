@@ -5780,15 +5780,15 @@ public:
 // Used to indicate an explicitly dependent call expression, wrapped in
 // 'TemplateDepth'-many layers of template parameters. Is value-dependent
 // if and only if 'TemplateDepth' is nonzero.
-class ExplDependentCallExpr : public Expr {
+class ExplicitlyDependentCallExpr : public Expr {
   unsigned TemplateDepth;
   Expr *SubExpr;
 
-  ExplDependentCallExpr(Expr *SubExpr, unsigned TemplateDepth);
+  ExplicitlyDependentCallExpr(Expr *SubExpr, unsigned TemplateDepth);
 
 public:
-  static ExplDependentCallExpr *Create(ASTContext &C, Expr *SubExpr,
-                                       unsigned TemplateDepth);
+  static ExplicitlyDependentCallExpr *Create(ASTContext &C, Expr *SubExpr,
+                                             unsigned TemplateDepth);
 
   Expr *getSubExpr() const {
     return SubExpr;
@@ -5815,7 +5815,7 @@ public:
   }
 
   static bool classof(const Stmt *T) {
-    return T->getStmtClass() == ExplDependentCallExprClass;
+    return T->getStmtClass() == ExplicitlyDependentCallExprClass;
   }
 };
 

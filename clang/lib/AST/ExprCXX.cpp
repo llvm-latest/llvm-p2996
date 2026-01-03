@@ -2086,18 +2086,18 @@ ExtractLValueExpr *ExtractLValueExpr::Create(ASTContext &C, SourceRange Range,
   return new (C) ExtractLValueExpr(ResultTy, Range, Decl);
 }
 
-ExplDependentCallExpr::ExplDependentCallExpr(Expr *SubExpr,
-                                             unsigned TemplateDepth)
-    : Expr(ExplDependentCallExprClass, SubExpr->getType(),
+ExplicitlyDependentCallExpr::ExplicitlyDependentCallExpr(Expr *SubExpr,
+                                                         unsigned TemplateDepth)
+    : Expr(ExplicitlyDependentCallExprClass, SubExpr->getType(),
            SubExpr->getValueKind(), OK_Ordinary),
       TemplateDepth(TemplateDepth), SubExpr(SubExpr) {
   setDependence(computeDependence(this));
 }
 
-ExplDependentCallExpr *ExplDependentCallExpr::Create(ASTContext &C,
-                                                     Expr *SubExpr,
-                                                     unsigned TemplateDepth) {
-  return new (C) ExplDependentCallExpr(SubExpr, TemplateDepth);
+ExplicitlyDependentCallExpr *
+ExplicitlyDependentCallExpr::Create(ASTContext &C, Expr *SubExpr,
+                                    unsigned TemplateDepth) {
+  return new (C) ExplicitlyDependentCallExpr(SubExpr, TemplateDepth);
 }
 
 CXXDependentMemberSpliceExpr::CXXDependentMemberSpliceExpr(

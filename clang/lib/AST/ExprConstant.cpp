@@ -8429,7 +8429,7 @@ public:
     return true;
   }
 
-  bool VisitExplDependentCallExpr(const ExplDependentCallExpr *E) {
+  bool VisitExplicitlyDependentCallExpr(const ExplicitlyDependentCallExpr *E) {
     assert(E->getTemplateDepth() == 0 &&
            "should not be evaluating dependent call expression");
     return StmtVisitorTy::Visit(E->getSubExpr());
@@ -18174,8 +18174,8 @@ static ICEDiag CheckICE(const Expr* E, const ASTContext &Ctx) {
   case Expr::CXXExpansionInitListSelectExprClass:
   case Expr::CXXExpansionInitListExprClass:
     return NoDiag();
-  case Expr::ExplDependentCallExprClass:
-    return CheckICE(cast<ExplDependentCallExpr>(E)->getSubExpr(), Ctx);
+  case Expr::ExplicitlyDependentCallExprClass:
+    return CheckICE(cast<ExplicitlyDependentCallExpr>(E)->getSubExpr(), Ctx);
   case Expr::CallExprClass:
   case Expr::CXXOperatorCallExprClass: {
     // C99 6.6/3 allows function calls within unevaluated subexpressions of

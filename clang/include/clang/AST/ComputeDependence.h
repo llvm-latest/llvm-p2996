@@ -107,7 +107,7 @@ class CXXDestructurableExpansionSelectExpr;
 class CXXIndeterminateExpansionSelectExpr;
 class StackLocationExpr;
 class ExtractLValueExpr;
-class ExplDependentCallExpr;
+class ExplicitlyDependentCallExpr;
 class ArraySectionExpr;
 class OMPArrayShapingExpr;
 class OMPIteratorExpr;
@@ -211,7 +211,7 @@ ExprDependence computeDependence(CXXSpliceExpr *E);
 ExprDependence computeDependence(CXXDependentMemberSpliceExpr *E);
 ExprDependence computeDependence(StackLocationExpr *E);
 ExprDependence computeDependence(ExtractLValueExpr *E);
-ExprDependence computeDependence(ExplDependentCallExpr *E);
+ExprDependence computeDependence(ExplicitlyDependentCallExpr *E);
 
 ExprDependence computeDependence(CXXExpansionInitListExpr *E);
 ExprDependence computeDependence(CXXExpansionInitListSelectExpr *E);

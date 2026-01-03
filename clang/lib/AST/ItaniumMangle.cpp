@@ -5160,8 +5160,8 @@ recurse:
   case Expr::CXXExpansionInitListSelectExprClass:
     llvm_unreachable("unexpected statement kind");
 
-  case Expr::ExplDependentCallExprClass:
-    mangleExpression(cast<ExplDependentCallExpr>(E)->getSubExpr());
+  case Expr::ExplicitlyDependentCallExprClass:
+    mangleExpression(cast<ExplicitlyDependentCallExpr>(E)->getSubExpr());
     break;
 
   case Expr::CXXReflectExprClass: {

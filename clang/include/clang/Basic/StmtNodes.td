@@ -188,7 +188,7 @@ def CXXMetafunctionExpr : StmtNode<Expr>;
 def CXXSpliceExpr : StmtNode<Expr>;
 def StackLocationExpr : StmtNode<Expr>;
 def ExtractLValueExpr : StmtNode<Expr>;
-def ExplDependentCallExpr : StmtNode<Expr>;
+def ExplicitlyDependentCallExpr : StmtNode<Expr>;
 
 // C++2c Expansion statement support expressions
 def CXXExpansionInitListExpr : StmtNode<Expr>;
