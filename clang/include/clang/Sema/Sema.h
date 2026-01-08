@@ -1,7 +1,6 @@
 //===--- Sema.h - Semantic Analysis & AST Building --------------*- C++ -*-===//
 //
 // Copyright 2024 Bloomberg Finance L.P.
-// Copyright 2026 Yukino Hayakawa
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.
