@@ -5824,14 +5824,9 @@ void Sema::InstantiateFunctionDefinition(SourceLocation PointOfInstantiation,
   };
   Function->setDeclarationNameLoc(NameLocPointsToPattern());
 
-  ExpressionEvaluationContext Ctx =
-      ExpressionEvaluationContext::PotentiallyEvaluated;
-  if (getLangOpts().CPlusPlus23 && Function->isConsteval())
-    Ctx = ExpressionEvaluationContext::ImmediateFunctionContext;
-  EnterExpressionEvaluationContext EvalContext(*this, Ctx);
-
-  currentEvaluationContext().InImmediateEscalatingFunctionContext =
-      Function->isImmediateEscalating();
+  // ImmediateContext handled in Sema::PushExpressionEvaluationContext
+  EnterExpressionEvaluationContextForFunction EvalContext(
+      *this, Sema::ExpressionEvaluationContext::PotentiallyEvaluated, Function);
 
   Qualifiers ThisTypeQuals;
   CXXRecordDecl *ThisContext = nullptr;
