@@ -411,20 +411,17 @@ Expr *makeStrLiteral(StringRef Str, ASTContext &C, bool Utf8) {
 
 const Type *getTypeForDecl(const Decl *D) {
   assert(D && "declaration is nullptr");
-  auto &Context = D->getASTContext();
-  const Type *T = nullptr;
-  // this also covers CXXRecordDecl and ClassTemplateSpecializationDecl
-  if (auto *TagD = dyn_cast<TagDecl>(D)) {
-    T = Context.getCanonicalTagType(TagD).getTypePtrOrNull();
-  } else if (auto *TD = dyn_cast<TypeDecl>(D)) {
-    // this will fail if D is a TagDecl
-    T = TD->getTypeForDecl();
-  } else if (const auto *VD = dyn_cast<VarDecl>(D)) {
-    T = VD->getType().getTypePtrOrNull();
-  } else {
-    llvm_unreachable("unhandled decl type");
-  }
-  return T;
+  return llvm::TypeSwitch<const Decl *, const Type *>(D)
+      // this also covers CXXRecordDecl and ClassTemplateSpecializationDecl
+      .Case<TagDecl>([&](const TagDecl *TD) {
+        return TD->getASTContext().getCanonicalTagType(TD).getTypePtrOrNull();
+      })
+      .Case<TypeDecl>([](const TypeDecl *TD) { return TD->getTypeForDecl(); })
+      .Case<VarDecl>(
+          [](const VarDecl *VD) { return VD->getType().getTypePtrOrNull(); })
+      .Default([](const Decl *) -> const Type * {
+        llvm_unreachable("unhandled decl type");
+      });
 }
 
 bool SetAndSucceed(APValue &Out, const APValue &Result) {
@@ -547,37 +544,24 @@ ParmVarDecl *getMostRecentParmVarDecl(ParmVarDecl *PVD) {
 
 #pragma region FindDecl Helpers
 NamedDecl *findTypeDecl(QualType QT) {
-  // Get the type's declaration.
-  NamedDecl *D = nullptr;
-  if (auto *TDT = dyn_cast<TypedefType>(QT))
-    D = TDT->getDecl();
-  else if (auto *UT = dyn_cast<UsingType>(QT))
-    // todo [merge:yukino:maybe-revert]
-    D = UT->getDecl();
-  else if (auto *TD = QT->getAsTagDecl())
-    return TD;
-  else if (auto *TT = dyn_cast<TagType>(QT))
-    // todo [merge:yukino:maybe-revert]
-    D = TT->getOriginalDecl();
-  else if (auto *UUTD = dyn_cast<UnresolvedUsingType>(QT))
-    D = UUTD->getDecl();
-  else if (auto *TS = dyn_cast<TemplateSpecializationType>(QT)) {
-    if (auto *CTD = dyn_cast<ClassTemplateDecl>(
-            TS->getTemplateName().getAsTemplateDecl())) {
-      void *InsertPos;
-      D = CTD->findSpecialization(TS->template_arguments(), InsertPos);
-    }
-  } else if (auto *STTP = dyn_cast<SubstTemplateTypeParmType>(QT))
-    D = findTypeDecl(STTP->getReplacementType());
-  // todo [merge:yukino:maybe-revert]
-  // InjectedClassNameType is actually a TagType now and should be already
-  // handled.
-  // else if (auto *ICNT = dyn_cast<InjectedClassNameType>(QT))
-  // D = ICNT->getOriginalDecl();
-  else if (auto *DTT = dyn_cast<DecltypeType>(QT))
-    D = findTypeDecl(DTT->getUnderlyingType());
-
-  return D;
+  return llvm::TypeSwitch<const Type *, NamedDecl *>(QT.getTypePtr())
+      .Case<TypedefType>([](auto *T) { return T->getDecl(); })
+      .Case<UsingType>([](auto *T) { return T->getDecl(); })
+      .Case<TagType>([](auto *T) { return T->getOriginalDecl(); })
+      .Case<UnresolvedUsingType>([](auto *T) { return T->getDecl(); })
+      .Case<SubstTemplateTypeParmType>(
+          [](auto *T) { return findTypeDecl(T->getReplacementType()); })
+      .Case<DecltypeType>(
+          [](auto *T) { return findTypeDecl(T->getUnderlyingType()); })
+      .Case<TemplateSpecializationType>([](auto *TST) -> NamedDecl * {
+        auto *CTD = dyn_cast_or_null<ClassTemplateDecl>(
+            TST->getTemplateName().getAsTemplateDecl());
+        if (!CTD)
+          return nullptr;
+        void *InsertPos;
+        return CTD->findSpecialization(TST->template_arguments(), InsertPos);
+      })
+      .Default([&](const Type *) -> NamedDecl * { return QT->getAsTagDecl(); });
 }
 
 bool findWhateverDeclLocWithLoc(const MetaFunctionEvalContext &EvalCtx,
@@ -647,9 +631,9 @@ QualType desugarType(QualType QT, bool UnwrapAliases, bool DropCV,
 
   if (!DropCV) {
     if (IsConst)
-      QT = QT.withConst();
+      QT.addConst();
     if (IsVolatile)
-      QT = QT.withVolatile();
+      QT.addVolatile();
   }
   return QT;
 }
@@ -815,6 +799,7 @@ bool ensureDeclared(ASTContext &C, QualType QT, SourceLocation SpecLoc) {
   return true;
 }
 
+#pragma region Reflectable Decls & Members
 bool isReflectableDecl(const MetaFunctionEvalContext &EvalCtx, Decl *D) {
   assert(D && "null declaration");
 
@@ -926,6 +911,7 @@ Decl *findIterableMember(const MetaFunctionEvalContext &EvalCtx, Decl *D,
 
   return D;
 }
+#pragma endregion
 
 unsigned parentOf(APValue &Result, Decl *D) {
   if (!D)
@@ -1069,109 +1055,114 @@ APValue MaybeUnproxy(ASTContext &C, APValue RV, bool Dealias = true) {
 // Diagnostic helper function
 // -----------------------------------------------------------------------------
 
+#pragma region Diagnostic Helpers
+StringRef GetSpecialMemberName(DeclarationName Name, bool IsTemplate) {
+  // Helper to append " template" if needed, avoiding manual duplication.
+  // Note: Since we return StringRef, we must return string literals.
+  // We handle the boolean branching inside the cases for safety.
+  switch (Name.getNameKind()) {
+  case DeclarationName::CXXConstructorName:
+    return IsTemplate ? "a constructor template" : "a constructor";
+  case DeclarationName::CXXDestructorName:
+    return IsTemplate ? "a destructor template" : "a destructor";
+  case DeclarationName::CXXConversionFunctionName:
+    return IsTemplate ? "a conversion function template"
+                      : "a conversion function";
+  case DeclarationName::CXXOperatorName:
+    return IsTemplate ? "an operator function template"
+                      : "an operator function";
+  case DeclarationName::CXXLiteralOperatorName:
+    return IsTemplate ? "a literal operator template" : "a literal operator";
+  default:
+    return "";
+  }
+}
+
 StringRef DescriptionOf(APValue RV, bool Granular = true) {
+  // 1. Handle non-AST constructs first (Simple Kinds)
   switch (RV.getReflectionKind()) {
   case ReflectionKind::Null:
     return "a null reflection";
-  case ReflectionKind::Type:
-    if (isTypeAlias(RV.getReflectedType()))
-      return "type alias";
-    else
-      return "a type";
   case ReflectionKind::Object:
     return "an object";
   case ReflectionKind::Value:
     return "a value";
-  case ReflectionKind::Declaration: {
+  case ReflectionKind::EntityProxy:
+    return "an entity proxy";
+  case ReflectionKind::BaseSpecifier:
+    return "a base class specifier";
+  case ReflectionKind::Parameter:
+    return "a parameter";
+  case ReflectionKind::DataMemberSpec:
+    return "a description of a non-static data member";
+  case ReflectionKind::Annotation:
+    return "an annotation";
+  case ReflectionKind::Type:
+    return isTypeAlias(RV.getReflectedType()) ? "type alias" : "a type";
+  default:
+    break; // Fallthrough to AST handling
+  }
+
+  // 2. Handle AST Declarations (Declarations and Templates)
+  // We use TypeSwitch to flatten the hierarchy check.
+  if (RV.getReflectionKind() == ReflectionKind::Declaration) {
     ValueDecl *D = RV.getReflectedDecl();
 
-    switch (D->getDeclName().getNameKind()) {
-    case DeclarationName::CXXConstructorName:
-      return "a constructor";
-    case DeclarationName::CXXDestructorName:
-      return "a destuctor";
-    case DeclarationName::CXXConversionFunctionName:
-      return "a conversion function";
-    case DeclarationName::CXXOperatorName:
-      return "an operator function";
-    case DeclarationName::CXXLiteralOperatorName:
-      return "a literal operator";
-    default:
-      break;
-    }
-    if (auto *FD = dyn_cast<FieldDecl>(D)) {
-      if (FD->isUnnamedBitField())
-        return "an unnamed bit-field";
-      else if (FD->isBitField())
-        return "a bit-field";
-      return "a non-static data member";
-    } else if (isa<ParmVarDecl>(D))
-      return "function parameter";
-    else if (isa<VarDecl>(D))
-      return "a variable";
-    else if (isa<BindingDecl>(D))
-      return "a structured binding";
-    else if (isa<FunctionDecl>(D))
-      return "a function";
-    else if (isa<EnumConstantDecl>(D))
-      return "a enumerator";
-    llvm_unreachable("unhandled declaration kind");
+    // Check for special names first (Constructor, Destructor, etc.)
+    if (StringRef Special =
+            GetSpecialMemberName(D->getDeclName(), /*IsTemplate=*/false);
+        !Special.empty())
+      return Special;
+
+    return llvm::TypeSwitch<ValueDecl *, StringRef>(D)
+        .Case<FieldDecl>([](FieldDecl *FD) {
+          if (FD->isUnnamedBitField())
+            return "an unnamed bit-field";
+          return FD->isBitField() ? "a bit-field" : "a non-static data member";
+        })
+        .Case<ParmVarDecl>([](auto) { return "function parameter"; })
+        .Case<VarDecl>([](auto) { return "a variable"; })
+        .Case<BindingDecl>([](auto) { return "a structured binding"; })
+        .Case<FunctionDecl>([](auto) { return "a function"; })
+        .Case<EnumConstantDecl>([](auto) { return "a enumerator"; })
+        .Default([] {
+          llvm_unreachable("unhandled declaration kind");
+          return StringRef();
+        }());
   }
-  case ReflectionKind::Template: {
+
+  if (RV.getReflectionKind() == ReflectionKind::Template) {
     TemplateDecl *TD = RV.getReflectedTemplate().getAsTemplateDecl();
 
-    switch (TD->getDeclName().getNameKind()) {
-    case DeclarationName::CXXConstructorName:
-      return "a constructor template";
-    case DeclarationName::CXXDestructorName:
-      return "a destuctor template";
-    case DeclarationName::CXXConversionFunctionName:
-      return "a conversion function template";
-    case DeclarationName::CXXOperatorName:
-      return "an operator function template";
-    case DeclarationName::CXXLiteralOperatorName:
-      return "a literal operator template";
-    default:
-      break;
-    }
-    if (isa<FunctionTemplateDecl>(TD))
-      return "a function template";
-    else if (isa<ClassTemplateDecl>(TD))
-      return "a class template";
-    else if (isa<TypeAliasTemplateDecl>(TD))
-      return "an alias template";
-    else if (isa<VarTemplateDecl>(TD))
-      return "a variable template";
-    else if (isa<ConceptDecl>(TD))
-      return "a concept";
-    llvm_unreachable("unhandled template kind");
+    if (StringRef Special =
+            GetSpecialMemberName(TD->getDeclName(), /*IsTemplate=*/true);
+        !Special.empty())
+      return Special;
+
+    return llvm::TypeSwitch<TemplateDecl *, StringRef>(TD)
+        .Case<FunctionTemplateDecl>([](auto) { return "a function template"; })
+        .Case<ClassTemplateDecl>([](auto) { return "a class template"; })
+        .Case<TypeAliasTemplateDecl>([](auto) { return "an alias template"; })
+        .Case<VarTemplateDecl>([](auto) { return "a variable template"; })
+        .Case<ConceptDecl>([](auto) { return "a concept"; })
+        .Default([]() {
+          llvm_unreachable("unhandled template kind");
+          return StringRef();
+        }());
   }
-  case ReflectionKind::Namespace: {
-    Decl *D = RV.getReflectedNamespace();
-    if (isa<TranslationUnitDecl>(D))
-      return "the global namespace";
-    else if (isa<NamespaceAliasDecl>(D))
-      return "a namespace alias";
-    else if (isa<NamespaceDecl>(D))
-      return "a namespace";
-    llvm_unreachable("unhandled namespace kind");
+
+  if (RV.getReflectionKind() == ReflectionKind::Namespace) {
+    return llvm::TypeSwitch<Decl *, StringRef>(RV.getReflectedNamespace())
+        .Case<TranslationUnitDecl>([](auto) { return "the global namespace"; })
+        .Case<NamespaceAliasDecl>([](auto) { return "a namespace alias"; })
+        .Case<NamespaceDecl>([](auto) { return "a namespace"; })
+        .Default([] {
+          llvm_unreachable("unhandled namespace kind");
+          return StringRef();
+        }());
   }
-  case ReflectionKind::EntityProxy: {
-    return "an entity proxy";
-  }
-  case ReflectionKind::BaseSpecifier: {
-    return "a base class specifier";
-  }
-  case ReflectionKind::Parameter: {
-    return "a parameter";
-  }
-  case ReflectionKind::DataMemberSpec: {
-    return "a description of a non-static data member";
-  }
-  case ReflectionKind::Annotation: {
-    return "an annotation";
-  }
-  }
+
+  llvm_unreachable("Unknown ReflectionKind");
 }
 
 bool DiagnoseReflectionKind(DiagFn Diagnoser, SourceRange Range,
