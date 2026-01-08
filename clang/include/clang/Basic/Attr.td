@@ -1522,7 +1522,7 @@ def Constructor : InheritableAttr {
   let TemplateDependent = 1;
   let Documentation = [CtorDtorDocs];
   let AdditionalMembers = [{
-    static constexpr unsigned DefaultPriority = 65535; 
+    static constexpr unsigned DefaultPriority = 65535;
   }];
 }
 
@@ -1867,7 +1867,7 @@ def Destructor : InheritableAttr {
   let TemplateDependent = 1;
   let Documentation = [CtorDtorDocs];
   let AdditionalMembers = [{
-    static constexpr unsigned int DefaultPriority = 65535; 
+    static constexpr unsigned int DefaultPriority = 65535;
   }];
 }
 
@@ -3973,16 +3973,31 @@ def NoSanitize : InheritableAttr {
   }];
 }
 
-// Attributes to disable a specific sanitizer. No new sanitizers should be added
+// Attribute to disable AddressSanitizer. No new spellings should be added
 // to this list; the no_sanitize attribute should be extended instead.
-def NoSanitizeSpecific : InheritableAttr {
+def NoSanitizeAddress : InheritableAttr {
   let Spellings = [GCC<"no_address_safety_analysis">,
-                   GCC<"no_sanitize_address">,
-                   GCC<"no_sanitize_thread">,
-                   Clang<"no_sanitize_memory">];
+                   GCC<"no_sanitize_address">];
   let Subjects = SubjectList<[Function, GlobalVar], ErrorDiag>;
-  let Documentation = [NoSanitizeAddressDocs, NoSanitizeThreadDocs,
-                       NoSanitizeMemoryDocs];
+  let Documentation = [NoSanitizeAddressDocs];
+  let ASTNode = 0;
+}
+
+// Attribute to disable ThreadSanitizer. No new spellings should be added
+// to this list; the no_sanitize attribute should be extended instead.
+def NoSanitizeThread : InheritableAttr {
+  let Spellings = [GCC<"no_sanitize_thread">];
+  let Subjects = SubjectList<[Function], ErrorDiag>;
+  let Documentation = [NoSanitizeThreadDocs];
+  let ASTNode = 0;
+}
+
+// Attribute to disable MemorySanitizer. No new spellings should be added
+// to this list; the no_sanitize attribute should be extended instead.
+def NoSanitizeMemory : InheritableAttr {
+  let Spellings = [Clang<"no_sanitize_memory">];
+  let Subjects = SubjectList<[Function], ErrorDiag>;
+  let Documentation = [NoSanitizeMemoryDocs];
   let ASTNode = 0;
 }
 
@@ -5107,6 +5122,12 @@ def HLSLContainedType : TypeAttr {
 
 def HLSLRawBuffer : TypeAttr {
   let Spellings = [CXX11<"hlsl", "raw_buffer">];
+  let LangOpts = [HLSL];
+  let Documentation = [InternalOnly];
+}
+
+def HLSLIsCounter : TypeAttr {
+  let Spellings = [CXX11<"hlsl", "is_counter">];
   let LangOpts = [HLSL];
   let Documentation = [InternalOnly];
 }

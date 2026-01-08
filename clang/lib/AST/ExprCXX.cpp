@@ -1726,8 +1726,8 @@ SizeOfPackExpr *SizeOfPackExpr::CreateDeserialized(ASTContext &Context,
   return new (Storage) SizeOfPackExpr(EmptyShell(), NumPartialArgs);
 }
 
-NamedDecl *SubstNonTypeTemplateParmExpr::getParameter() const {
-  return cast<NamedDecl>(
+NonTypeTemplateParmDecl *SubstNonTypeTemplateParmExpr::getParameter() const {
+  return cast<NonTypeTemplateParmDecl>(
       getReplacedTemplateParameterList(getAssociatedDecl())->asArray()[Index]);
 }
 
