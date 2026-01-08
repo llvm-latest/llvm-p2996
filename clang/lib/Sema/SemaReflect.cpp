@@ -17,7 +17,7 @@
 #include "clang/AST/Attr.h"
 #include "clang/AST/DeclBase.h"
 #include "clang/AST/MetaActions.h"
-#include "clang/AST/Metafunction.h"
+#include "clang/AST/MetaFunction.h"
 #include "clang/Basic/DiagnosticSema.h"
 #include "clang/Sema/EnterExpressionEvaluationContext.h"
 #include "clang/Sema/Lookup.h"
@@ -1040,8 +1040,8 @@ ExprResult Sema::ActOnCXXMetafunction(SourceLocation KwLoc,
   auto FnID = static_cast<MetaFunctionID>(FnIDArgRV.Val.getInt().getExtValue());
 
   // Look up the corresponding Metafunction object.
-  const Metafunction *Metafn;
-  if (Metafunction::Lookup(FnID, Metafn)) {
+  const MetaFunction *Metafn;
+  if (MetaFunction::Lookup(FnID, Metafn)) {
     Diag(FnIDArg->getExprLoc(), diag::err_unknown_metafunction);
     return ExprError();
   }
@@ -1082,8 +1082,8 @@ Sema::getMetafunctionCb(MetaFunctionID FnID) {
   auto UnderlyingID = llvm::to_underlying(FnID);
   auto ImplIt = MetafunctionImplCbs.find(UnderlyingID);
   if (ImplIt == MetafunctionImplCbs.end()) {
-    const Metafunction *Metafn;
-    Metafunction::Lookup(FnID, Metafn);
+    const MetaFunction *Metafn;
+    MetaFunction::Lookup(FnID, Metafn);
 
     assert(Metafn);
     auto MetafnImpl = std::make_unique<CXXMetafunctionExpr::ImplFn>(
@@ -1401,8 +1401,8 @@ ExprResult Sema::BuildCXXMetafunctionExpr(
     MetaFunctionID MetaFnID, const CXXMetafunctionExpr::ImplFn &Impl,
     SmallVectorImpl<Expr *> &Args) {
   // Look up the corresponding Metafunction object.
-  const Metafunction *MetaFn;
-  if (Metafunction::Lookup(MetaFnID, MetaFn)) {
+  const MetaFunction *MetaFn;
+  if (MetaFunction::Lookup(MetaFnID, MetaFn)) {
     Diag(Args[0]->getExprLoc(), diag::err_unknown_metafunction);
     return ExprError();
   }
@@ -1410,23 +1410,23 @@ ExprResult Sema::BuildCXXMetafunctionExpr(
   // Derive the result type from the ResultKind of the metafunction.
   auto DeriveResultTy = [&](QualType &Result) -> bool {
     switch (MetaFn->getResultKind()) {
-    case Metafunction::MFRK_bool:
+    case MetaFunction::ResultKind::Bool:
       Result = Context.BoolTy;
       return false;
-    case Metafunction::MFRK_metaInfo:
+    case MetaFunction::ResultKind::MetaInfo:
       Result = Context.MetaInfoTy;
       return false;
-    case Metafunction::MFRK_sizeT:
+    case MetaFunction::ResultKind::Size:
       Result = Context.getSizeType();
       return false;
-    case Metafunction::MFRK_sourceLoc: {
+    case MetaFunction::ResultKind::SourceLoc: {
       RecordDecl *SourceLocDecl = lookupStdSourceLocationImpl(KwLoc);
       if (SourceLocDecl)
         Result = Context.getPointerType(
             Context.getCanonicalTagType(SourceLocDecl).withConst());
       return SourceLocDecl == nullptr;
     }
-    case Metafunction::MFRK_spliceFromArg: {
+    case MetaFunction::ResultKind::SpliceFromArg: {
       Expr *TyRefl = Args[1];
       if (TyRefl->isTypeDependent() || TyRefl->isValueDependent()) {
         Result = Context.DependentTy;
@@ -1457,7 +1457,7 @@ ExprResult Sema::BuildCXXMetafunctionExpr(
       Result = ER.Val.getReflectedType().getCanonicalType();
       return false;
     }
-    case Metafunction::MFRK_maxNum:
+    case MetaFunction::ResultKind::MaxNum:
       llvm_unreachable("this is a placeholder metafunction");
     }
     llvm_unreachable("unknown metafunction result kind");

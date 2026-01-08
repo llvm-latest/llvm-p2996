@@ -19,7 +19,7 @@
 #include "clang/AST/DeclGroup.h"
 #include "clang/AST/DeclTemplate.h"
 #include "clang/AST/Expr.h"
-#include "clang/AST/Metafunction.h"
+#include "clang/AST/MetaFunction.h"
 #include "clang/AST/RecordLayout.h"
 #include "clang/AST/Reflection.h"
 #include "clang/Basic/DiagnosticMetafn.h"
@@ -28,10 +28,12 @@
 #include "clang/Lex/Lexer.h"
 #include "clang/Lex/Preprocessor.h"
 #include "llvm/ADT/StringExtras.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/Support/Format.h"
 #include "llvm/Support/raw_ostream.h"
 
 namespace clang {
+namespace {
 
 using EvalFn = MetaFunctionEvaluateFn;
 using DiagFn = MetaFunctionDiagnoseFn;
@@ -40,143 +42,135 @@ using DiagFn = MetaFunctionDiagnoseFn;
 // P2996 Metafunction declarations
 // -----------------------------------------------------------------------------
 
-static bool
-get_begin_enumerator_decl_of(const MetaFunctionEvalContext &EvalCtx);
-static bool get_next_enumerator_decl_of(const MetaFunctionEvalContext &EvalCtx);
-static bool get_ith_base_of(const MetaFunctionEvalContext &EvalCtx);
-static bool
-get_ith_template_argument_of(const MetaFunctionEvalContext &EvalCtx);
-static bool get_begin_member_decl_of(const MetaFunctionEvalContext &EvalCtx);
-static bool get_next_member_decl_of(const MetaFunctionEvalContext &EvalCtx);
-static bool is_structural_type(const MetaFunctionEvalContext &EvalCtx);
-static bool map_decl_to_entity(const MetaFunctionEvalContext &EvalCtx);
-static bool identifier_of(const MetaFunctionEvalContext &EvalCtx);
-static bool has_identifier(const MetaFunctionEvalContext &EvalCtx);
-static bool operator_of(const MetaFunctionEvalContext &EvalCtx);
-static bool source_location_of(const MetaFunctionEvalContext &EvalCtx);
-static bool type_of(const MetaFunctionEvalContext &EvalCtx);
-static bool parent_of(const MetaFunctionEvalContext &EvalCtx);
-static bool underlying_entity_of(const MetaFunctionEvalContext &EvalCtx);
-static bool proxied_entity_of(const MetaFunctionEvalContext &EvalCtx);
-static bool constant_of(const MetaFunctionEvalContext &EvalCtx);
-static bool object_of(const MetaFunctionEvalContext &EvalCtx);
-static bool template_of(const MetaFunctionEvalContext &EvalCtx);
-static bool substitute(const MetaFunctionEvalContext &EvalCtx);
-static bool extract(const MetaFunctionEvalContext &EvalCtx);
-static bool is_public(const MetaFunctionEvalContext &EvalCtx);
-static bool is_protected(const MetaFunctionEvalContext &EvalCtx);
-static bool is_private(const MetaFunctionEvalContext &EvalCtx);
-static bool is_virtual(const MetaFunctionEvalContext &EvalCtx);
-static bool is_pure_virtual(const MetaFunctionEvalContext &EvalCtx);
-static bool is_override(const MetaFunctionEvalContext &EvalCtx);
-static bool is_deleted(const MetaFunctionEvalContext &EvalCtx);
-static bool is_defaulted(const MetaFunctionEvalContext &EvalCtx);
-static bool is_explicit(const MetaFunctionEvalContext &EvalCtx);
-static bool is_noexcept(const MetaFunctionEvalContext &EvalCtx);
-static bool is_bit_field(const MetaFunctionEvalContext &EvalCtx);
-static bool is_enumerator(const MetaFunctionEvalContext &EvalCtx);
-static bool is_final(const MetaFunctionEvalContext &EvalCtx);
-static bool is_const(const MetaFunctionEvalContext &EvalCtx);
-static bool is_volatile(const MetaFunctionEvalContext &EvalCtx);
-static bool is_mutable_member(const MetaFunctionEvalContext &EvalCtx);
-static bool
-is_lvalue_reference_qualified(const MetaFunctionEvalContext &EvalCtx);
-static bool
-is_rvalue_reference_qualified(const MetaFunctionEvalContext &EvalCtx);
-static bool has_static_storage_duration(const MetaFunctionEvalContext &EvalCtx);
-static bool has_thread_storage_duration(const MetaFunctionEvalContext &EvalCtx);
-static bool
-has_automatic_storage_duration(const MetaFunctionEvalContext &EvalCtx);
-static bool has_internal_linkage(const MetaFunctionEvalContext &EvalCtx);
-static bool has_module_linkage(const MetaFunctionEvalContext &EvalCtx);
-static bool has_external_linkage(const MetaFunctionEvalContext &EvalCtx);
-static bool has_linkage(const MetaFunctionEvalContext &EvalCtx);
-static bool is_class_member(const MetaFunctionEvalContext &EvalCtx);
-static bool is_namespace_member(const MetaFunctionEvalContext &EvalCtx);
-static bool is_nonstatic_data_member(const MetaFunctionEvalContext &EvalCtx);
-static bool is_static_member(const MetaFunctionEvalContext &EvalCtx);
-static bool is_base(const MetaFunctionEvalContext &EvalCtx);
-static bool is_data_member_spec(const MetaFunctionEvalContext &EvalCtx);
-static bool is_namespace(const MetaFunctionEvalContext &EvalCtx);
-static bool is_function(const MetaFunctionEvalContext &EvalCtx);
-static bool is_variable(const MetaFunctionEvalContext &EvalCtx);
-static bool is_type(const MetaFunctionEvalContext &EvalCtx);
-static bool is_alias(const MetaFunctionEvalContext &EvalCtx);
-static bool is_entity_proxy(const MetaFunctionEvalContext &EvalCtx);
-static bool is_complete_type(const MetaFunctionEvalContext &EvalCtx);
-static bool has_complete_definition(const MetaFunctionEvalContext &EvalCtx);
-static bool is_enumerable_type(const MetaFunctionEvalContext &EvalCtx);
-static bool is_template(const MetaFunctionEvalContext &EvalCtx);
-static bool is_function_template(const MetaFunctionEvalContext &EvalCtx);
-static bool is_variable_template(const MetaFunctionEvalContext &EvalCtx);
-static bool is_class_template(const MetaFunctionEvalContext &EvalCtx);
-static bool is_alias_template(const MetaFunctionEvalContext &EvalCtx);
-static bool
-is_conversion_function_template(const MetaFunctionEvalContext &EvalCtx);
-static bool
-is_operator_function_template(const MetaFunctionEvalContext &EvalCtx);
-static bool
-is_literal_operator_template(const MetaFunctionEvalContext &EvalCtx);
-static bool is_constructor_template(const MetaFunctionEvalContext &EvalCtx);
-static bool is_concept(const MetaFunctionEvalContext &EvalCtx);
-static bool is_structured_binding(const MetaFunctionEvalContext &EvalCtx);
-static bool is_value(const MetaFunctionEvalContext &EvalCtx);
-static bool is_object(const MetaFunctionEvalContext &EvalCtx);
-static bool has_template_arguments(const MetaFunctionEvalContext &EvalCtx);
-static bool
-has_default_member_initializer(const MetaFunctionEvalContext &EvalCtx);
-static bool is_conversion_function(const MetaFunctionEvalContext &EvalCtx);
-static bool is_operator_function(const MetaFunctionEvalContext &EvalCtx);
-static bool is_literal_operator(const MetaFunctionEvalContext &EvalCtx);
-static bool is_constructor(const MetaFunctionEvalContext &EvalCtx);
-static bool is_default_constructor(const MetaFunctionEvalContext &EvalCtx);
-static bool is_copy_constructor(const MetaFunctionEvalContext &EvalCtx);
-static bool is_move_constructor(const MetaFunctionEvalContext &EvalCtx);
-static bool is_assignment(const MetaFunctionEvalContext &EvalCtx);
-static bool is_copy_assignment(const MetaFunctionEvalContext &EvalCtx);
-static bool is_move_assignment(const MetaFunctionEvalContext &EvalCtx);
-static bool is_destructor(const MetaFunctionEvalContext &EvalCtx);
-static bool is_special_member_function(const MetaFunctionEvalContext &EvalCtx);
-static bool is_user_provided(const MetaFunctionEvalContext &EvalCtx);
-static bool is_user_declared(const MetaFunctionEvalContext &EvalCtx);
-static bool reflect_result(const MetaFunctionEvalContext &EvalCtx);
-static bool data_member_spec(const MetaFunctionEvalContext &EvalCtx);
-static bool define_aggregate(const MetaFunctionEvalContext &EvalCtx);
-static bool offset_of(const MetaFunctionEvalContext &EvalCtx);
-static bool size_of(const MetaFunctionEvalContext &EvalCtx);
-static bool bit_offset_of(const MetaFunctionEvalContext &EvalCtx);
-static bool bit_size_of(const MetaFunctionEvalContext &EvalCtx);
-static bool alignment_of(const MetaFunctionEvalContext &EvalCtx);
+#pragma region Metafunction Declarations
+
+bool get_begin_enumerator_decl_of(const MetaFunctionEvalContext &EvalCtx);
+bool get_next_enumerator_decl_of(const MetaFunctionEvalContext &EvalCtx);
+bool get_ith_base_of(const MetaFunctionEvalContext &EvalCtx);
+bool get_ith_template_argument_of(const MetaFunctionEvalContext &EvalCtx);
+bool get_begin_member_decl_of(const MetaFunctionEvalContext &EvalCtx);
+bool get_next_member_decl_of(const MetaFunctionEvalContext &EvalCtx);
+bool is_structural_type(const MetaFunctionEvalContext &EvalCtx);
+bool map_decl_to_entity(const MetaFunctionEvalContext &EvalCtx);
+bool identifier_of(const MetaFunctionEvalContext &EvalCtx);
+bool has_identifier(const MetaFunctionEvalContext &EvalCtx);
+bool operator_of(const MetaFunctionEvalContext &EvalCtx);
+bool source_location_of(const MetaFunctionEvalContext &EvalCtx);
+bool type_of(const MetaFunctionEvalContext &EvalCtx);
+bool parent_of(const MetaFunctionEvalContext &EvalCtx);
+bool underlying_entity_of(const MetaFunctionEvalContext &EvalCtx);
+bool proxied_entity_of(const MetaFunctionEvalContext &EvalCtx);
+bool constant_of(const MetaFunctionEvalContext &EvalCtx);
+bool object_of(const MetaFunctionEvalContext &EvalCtx);
+bool template_of(const MetaFunctionEvalContext &EvalCtx);
+bool substitute(const MetaFunctionEvalContext &EvalCtx);
+bool extract(const MetaFunctionEvalContext &EvalCtx);
+bool is_public(const MetaFunctionEvalContext &EvalCtx);
+bool is_protected(const MetaFunctionEvalContext &EvalCtx);
+bool is_private(const MetaFunctionEvalContext &EvalCtx);
+bool is_virtual(const MetaFunctionEvalContext &EvalCtx);
+bool is_pure_virtual(const MetaFunctionEvalContext &EvalCtx);
+bool is_override(const MetaFunctionEvalContext &EvalCtx);
+bool is_deleted(const MetaFunctionEvalContext &EvalCtx);
+bool is_defaulted(const MetaFunctionEvalContext &EvalCtx);
+bool is_explicit(const MetaFunctionEvalContext &EvalCtx);
+bool is_noexcept(const MetaFunctionEvalContext &EvalCtx);
+bool is_bit_field(const MetaFunctionEvalContext &EvalCtx);
+bool is_enumerator(const MetaFunctionEvalContext &EvalCtx);
+bool is_final(const MetaFunctionEvalContext &EvalCtx);
+bool is_const(const MetaFunctionEvalContext &EvalCtx);
+bool is_volatile(const MetaFunctionEvalContext &EvalCtx);
+bool is_mutable_member(const MetaFunctionEvalContext &EvalCtx);
+bool is_lvalue_reference_qualified(const MetaFunctionEvalContext &EvalCtx);
+bool is_rvalue_reference_qualified(const MetaFunctionEvalContext &EvalCtx);
+bool has_static_storage_duration(const MetaFunctionEvalContext &EvalCtx);
+bool has_thread_storage_duration(const MetaFunctionEvalContext &EvalCtx);
+bool has_automatic_storage_duration(const MetaFunctionEvalContext &EvalCtx);
+bool has_internal_linkage(const MetaFunctionEvalContext &EvalCtx);
+bool has_module_linkage(const MetaFunctionEvalContext &EvalCtx);
+bool has_external_linkage(const MetaFunctionEvalContext &EvalCtx);
+bool has_linkage(const MetaFunctionEvalContext &EvalCtx);
+bool is_class_member(const MetaFunctionEvalContext &EvalCtx);
+bool is_namespace_member(const MetaFunctionEvalContext &EvalCtx);
+bool is_nonstatic_data_member(const MetaFunctionEvalContext &EvalCtx);
+bool is_static_member(const MetaFunctionEvalContext &EvalCtx);
+bool is_base(const MetaFunctionEvalContext &EvalCtx);
+bool is_data_member_spec(const MetaFunctionEvalContext &EvalCtx);
+bool is_namespace(const MetaFunctionEvalContext &EvalCtx);
+bool is_function(const MetaFunctionEvalContext &EvalCtx);
+bool is_variable(const MetaFunctionEvalContext &EvalCtx);
+bool is_type(const MetaFunctionEvalContext &EvalCtx);
+bool is_alias(const MetaFunctionEvalContext &EvalCtx);
+bool is_entity_proxy(const MetaFunctionEvalContext &EvalCtx);
+bool is_complete_type(const MetaFunctionEvalContext &EvalCtx);
+bool has_complete_definition(const MetaFunctionEvalContext &EvalCtx);
+bool is_enumerable_type(const MetaFunctionEvalContext &EvalCtx);
+bool is_template(const MetaFunctionEvalContext &EvalCtx);
+bool is_function_template(const MetaFunctionEvalContext &EvalCtx);
+bool is_variable_template(const MetaFunctionEvalContext &EvalCtx);
+bool is_class_template(const MetaFunctionEvalContext &EvalCtx);
+bool is_alias_template(const MetaFunctionEvalContext &EvalCtx);
+bool is_conversion_function_template(const MetaFunctionEvalContext &EvalCtx);
+bool is_operator_function_template(const MetaFunctionEvalContext &EvalCtx);
+bool is_literal_operator_template(const MetaFunctionEvalContext &EvalCtx);
+bool is_constructor_template(const MetaFunctionEvalContext &EvalCtx);
+bool is_concept(const MetaFunctionEvalContext &EvalCtx);
+bool is_structured_binding(const MetaFunctionEvalContext &EvalCtx);
+bool is_value(const MetaFunctionEvalContext &EvalCtx);
+bool is_object(const MetaFunctionEvalContext &EvalCtx);
+bool has_template_arguments(const MetaFunctionEvalContext &EvalCtx);
+bool has_default_member_initializer(const MetaFunctionEvalContext &EvalCtx);
+bool is_conversion_function(const MetaFunctionEvalContext &EvalCtx);
+bool is_operator_function(const MetaFunctionEvalContext &EvalCtx);
+bool is_literal_operator(const MetaFunctionEvalContext &EvalCtx);
+bool is_constructor(const MetaFunctionEvalContext &EvalCtx);
+bool is_default_constructor(const MetaFunctionEvalContext &EvalCtx);
+bool is_copy_constructor(const MetaFunctionEvalContext &EvalCtx);
+bool is_move_constructor(const MetaFunctionEvalContext &EvalCtx);
+bool is_assignment(const MetaFunctionEvalContext &EvalCtx);
+bool is_copy_assignment(const MetaFunctionEvalContext &EvalCtx);
+bool is_move_assignment(const MetaFunctionEvalContext &EvalCtx);
+bool is_destructor(const MetaFunctionEvalContext &EvalCtx);
+bool is_special_member_function(const MetaFunctionEvalContext &EvalCtx);
+bool is_user_provided(const MetaFunctionEvalContext &EvalCtx);
+bool is_user_declared(const MetaFunctionEvalContext &EvalCtx);
+bool reflect_result(const MetaFunctionEvalContext &EvalCtx);
+bool data_member_spec(const MetaFunctionEvalContext &EvalCtx);
+bool define_aggregate(const MetaFunctionEvalContext &EvalCtx);
+bool offset_of(const MetaFunctionEvalContext &EvalCtx);
+bool size_of(const MetaFunctionEvalContext &EvalCtx);
+bool bit_offset_of(const MetaFunctionEvalContext &EvalCtx);
+bool bit_size_of(const MetaFunctionEvalContext &EvalCtx);
+bool alignment_of(const MetaFunctionEvalContext &EvalCtx);
 
 // -----------------------------------------------------------------------------
 // P3096 Metafunction declarations
 // -----------------------------------------------------------------------------
 
-static bool get_ith_parameter_of(const MetaFunctionEvalContext &EvalCtx);
-static bool has_ellipsis_parameter(const MetaFunctionEvalContext &EvalCtx);
-static bool has_default_argument(const MetaFunctionEvalContext &EvalCtx);
-static bool
-is_explicit_object_parameter(const MetaFunctionEvalContext &EvalCtx);
-static bool is_function_parameter(const MetaFunctionEvalContext &EvalCtx);
-static bool return_type_of(const MetaFunctionEvalContext &EvalCtx);
-static bool variable_of(const MetaFunctionEvalContext &EvalCtx);
-static bool get_ith_annotation_of(const MetaFunctionEvalContext &EvalCtx);
-static bool is_annotation(const MetaFunctionEvalContext &EvalCtx);
-static bool annotate(const MetaFunctionEvalContext &EvalCtx);
+bool get_ith_parameter_of(const MetaFunctionEvalContext &EvalCtx);
+bool has_ellipsis_parameter(const MetaFunctionEvalContext &EvalCtx);
+bool has_default_argument(const MetaFunctionEvalContext &EvalCtx);
+bool is_explicit_object_parameter(const MetaFunctionEvalContext &EvalCtx);
+bool is_function_parameter(const MetaFunctionEvalContext &EvalCtx);
+bool return_type_of(const MetaFunctionEvalContext &EvalCtx);
+bool variable_of(const MetaFunctionEvalContext &EvalCtx);
+bool get_ith_annotation_of(const MetaFunctionEvalContext &EvalCtx);
+bool is_annotation(const MetaFunctionEvalContext &EvalCtx);
+bool annotate(const MetaFunctionEvalContext &EvalCtx);
 
 // =========================
 // Accessibility API (P3493)
 // =========================
 
-static bool current_access_context(const MetaFunctionEvalContext &EvalCtx);
-static bool is_accessible(const MetaFunctionEvalContext &EvalCtx);
+bool current_access_context(const MetaFunctionEvalContext &EvalCtx);
+bool is_accessible(const MetaFunctionEvalContext &EvalCtx);
 
 // ===================================================
 // Other bespoke functions (not proposed at this time)
 // ===================================================
 
-static bool is_access_specified(const MetaFunctionEvalContext &EvalCtx);
-static bool reflect_invoke(const MetaFunctionEvalContext &EvalCtx);
+bool is_access_specified(const MetaFunctionEvalContext &EvalCtx);
+bool reflect_invoke(const MetaFunctionEvalContext &EvalCtx);
 
 // -----------------------------------------------------------------------------
 // Metafunction table
@@ -187,235 +181,221 @@ static bool reflect_invoke(const MetaFunctionEvalContext &EvalCtx);
 // -----------------------------------------------------------------------------
 
 #define SEMA_METAFUNCTION(Kind, MinArgs, MaxArgs, Impl)                        \
-  {Metafunction::MFRK_##Kind, MinArgs, MaxArgs, MetaFunctionID::Impl, Impl}
-#define SEMA_METAFUNCTION_DUMMY(Id)                                            \
-  {Metafunction::MFRK_maxNum, 0, 0, MetaFunctionID::invalid, nullptr}
+  {MetaFunction::ResultKind::Kind, MinArgs, MaxArgs, MetaFunctionID::Impl, Impl}
+#define SEMA_METAFUNCTION_PLACEHOLDER(Id)                                      \
+  {MetaFunction::ResultKind::MaxNum, 0, 0, MetaFunctionID::invalid, nullptr}
 
-static constexpr Metafunction Metafunctions[] = {
+constexpr MetaFunction Metafunctions[] = {
     // Kind, MinArgs, MaxArgs, Impl
 
-    SEMA_METAFUNCTION_DUMMY(0),
+    SEMA_METAFUNCTION_PLACEHOLDER(0),
 
     // non-exposed metafunctions
-    SEMA_METAFUNCTION(metaInfo, 2, 2, get_begin_enumerator_decl_of),
-    SEMA_METAFUNCTION(metaInfo, 2, 2, get_next_enumerator_decl_of),
-    SEMA_METAFUNCTION(metaInfo, 3, 3, get_ith_base_of),
-    SEMA_METAFUNCTION(metaInfo, 3, 3, get_ith_template_argument_of),
-    SEMA_METAFUNCTION(metaInfo, 2, 2, get_begin_member_decl_of),
-    SEMA_METAFUNCTION(metaInfo, 2, 2, get_next_member_decl_of),
-    SEMA_METAFUNCTION(bool, 1, 1, is_structural_type),
-    SEMA_METAFUNCTION(metaInfo, 1, 1, map_decl_to_entity),
+    SEMA_METAFUNCTION(MetaInfo, 2, 2, get_begin_enumerator_decl_of),
+    SEMA_METAFUNCTION(MetaInfo, 2, 2, get_next_enumerator_decl_of),
+    SEMA_METAFUNCTION(MetaInfo, 3, 3, get_ith_base_of),
+    SEMA_METAFUNCTION(MetaInfo, 3, 3, get_ith_template_argument_of),
+    SEMA_METAFUNCTION(MetaInfo, 2, 2, get_begin_member_decl_of),
+    SEMA_METAFUNCTION(MetaInfo, 2, 2, get_next_member_decl_of),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_structural_type),
+    SEMA_METAFUNCTION(MetaInfo, 1, 1, map_decl_to_entity),
 
-    SEMA_METAFUNCTION_DUMMY(9),
-    SEMA_METAFUNCTION_DUMMY(10),
+    SEMA_METAFUNCTION_PLACEHOLDER(9),
+    SEMA_METAFUNCTION_PLACEHOLDER(10),
 
     // exposed metafunctions
-    SEMA_METAFUNCTION(spliceFromArg, 4, 4, identifier_of),
-    SEMA_METAFUNCTION(bool, 1, 1, has_identifier),
-    SEMA_METAFUNCTION(sizeT, 1, 1, operator_of),
-    SEMA_METAFUNCTION(sourceLoc, 1, 1, source_location_of),
-    SEMA_METAFUNCTION(metaInfo, 1, 1, type_of),
-    SEMA_METAFUNCTION(metaInfo, 1, 1, parent_of),
-    SEMA_METAFUNCTION(metaInfo, 1, 1, underlying_entity_of),
-    SEMA_METAFUNCTION(metaInfo, 1, 1, proxied_entity_of),
-    SEMA_METAFUNCTION(metaInfo, 1, 1, object_of),
-    SEMA_METAFUNCTION(metaInfo, 1, 1, constant_of),
-    SEMA_METAFUNCTION(metaInfo, 1, 1, template_of),
-    SEMA_METAFUNCTION(metaInfo, 4, 4, substitute),
-    SEMA_METAFUNCTION(spliceFromArg, 2, 2, extract),
-    SEMA_METAFUNCTION(bool, 1, 1, is_public),
-    SEMA_METAFUNCTION(bool, 1, 1, is_protected),
-    SEMA_METAFUNCTION(bool, 1, 1, is_private),
-    SEMA_METAFUNCTION(bool, 1, 1, is_virtual),
-    SEMA_METAFUNCTION(bool, 1, 1, is_pure_virtual),
-    SEMA_METAFUNCTION(bool, 1, 1, is_override),
-    SEMA_METAFUNCTION(bool, 1, 1, is_deleted),
-    SEMA_METAFUNCTION(bool, 1, 1, is_defaulted),
-    SEMA_METAFUNCTION(bool, 1, 1, is_explicit),
-    SEMA_METAFUNCTION(bool, 1, 1, is_noexcept),
-    SEMA_METAFUNCTION(bool, 1, 1, is_bit_field),
-    SEMA_METAFUNCTION(bool, 1, 1, is_enumerator),
-    SEMA_METAFUNCTION(bool, 1, 1, is_final),
-    SEMA_METAFUNCTION(bool, 1, 1, is_const),
-    SEMA_METAFUNCTION(bool, 1, 1, is_volatile),
-    SEMA_METAFUNCTION(bool, 1, 1, is_mutable_member),
-    SEMA_METAFUNCTION(bool, 1, 1, is_lvalue_reference_qualified),
-    SEMA_METAFUNCTION(bool, 1, 1, is_rvalue_reference_qualified),
-    SEMA_METAFUNCTION(bool, 1, 1, has_static_storage_duration),
-    SEMA_METAFUNCTION(bool, 1, 1, has_thread_storage_duration),
-    SEMA_METAFUNCTION(bool, 1, 1, has_automatic_storage_duration),
-    SEMA_METAFUNCTION(bool, 1, 1, has_internal_linkage),
-    SEMA_METAFUNCTION(bool, 1, 1, has_module_linkage),
-    SEMA_METAFUNCTION(bool, 1, 1, has_external_linkage),
-    SEMA_METAFUNCTION(bool, 1, 1, has_linkage),
-    SEMA_METAFUNCTION(bool, 1, 1, is_class_member),
-    SEMA_METAFUNCTION(bool, 1, 1, is_namespace_member),
-    SEMA_METAFUNCTION(bool, 1, 1, is_nonstatic_data_member),
-    SEMA_METAFUNCTION(bool, 1, 1, is_static_member),
-    SEMA_METAFUNCTION(bool, 1, 1, is_base),
-    SEMA_METAFUNCTION(bool, 1, 1, is_data_member_spec),
-    SEMA_METAFUNCTION(bool, 1, 1, is_namespace),
-    SEMA_METAFUNCTION(bool, 1, 1, is_function),
-    SEMA_METAFUNCTION(bool, 1, 1, is_variable),
-    SEMA_METAFUNCTION(bool, 1, 1, is_type),
-    SEMA_METAFUNCTION(bool, 1, 1, is_alias),
-    SEMA_METAFUNCTION(bool, 1, 1, is_entity_proxy),
-    SEMA_METAFUNCTION(bool, 1, 1, is_complete_type),
-    SEMA_METAFUNCTION(bool, 1, 1, has_complete_definition),
-    SEMA_METAFUNCTION(bool, 1, 1, is_enumerable_type),
-    SEMA_METAFUNCTION(bool, 1, 1, is_template),
-    SEMA_METAFUNCTION(bool, 1, 1, is_function_template),
-    SEMA_METAFUNCTION(bool, 1, 1, is_variable_template),
-    SEMA_METAFUNCTION(bool, 1, 1, is_class_template),
-    SEMA_METAFUNCTION(bool, 1, 1, is_alias_template),
-    SEMA_METAFUNCTION(bool, 1, 1, is_conversion_function_template),
-    SEMA_METAFUNCTION(bool, 1, 1, is_operator_function_template),
-    SEMA_METAFUNCTION(bool, 1, 1, is_literal_operator_template),
-    SEMA_METAFUNCTION(bool, 1, 1, is_constructor_template),
-    SEMA_METAFUNCTION(bool, 1, 1, is_concept),
-    SEMA_METAFUNCTION(bool, 1, 1, is_structured_binding),
-    SEMA_METAFUNCTION(bool, 1, 1, is_value),
-    SEMA_METAFUNCTION(bool, 1, 1, is_object),
-    SEMA_METAFUNCTION(bool, 1, 1, has_template_arguments),
-    SEMA_METAFUNCTION(bool, 1, 1, has_default_member_initializer),
-    SEMA_METAFUNCTION(bool, 1, 1, is_conversion_function),
-    SEMA_METAFUNCTION(bool, 1, 1, is_operator_function),
-    SEMA_METAFUNCTION(bool, 1, 1, is_literal_operator),
-    SEMA_METAFUNCTION(bool, 1, 1, is_constructor),
-    SEMA_METAFUNCTION(bool, 1, 1, is_default_constructor),
-    SEMA_METAFUNCTION(bool, 1, 1, is_copy_constructor),
-    SEMA_METAFUNCTION(bool, 1, 1, is_move_constructor),
-    SEMA_METAFUNCTION(bool, 1, 1, is_assignment),
-    SEMA_METAFUNCTION(bool, 1, 1, is_copy_assignment),
-    SEMA_METAFUNCTION(bool, 1, 1, is_move_assignment),
-    SEMA_METAFUNCTION(bool, 1, 1, is_destructor),
-    SEMA_METAFUNCTION(bool, 1, 1, is_special_member_function),
-    SEMA_METAFUNCTION(bool, 1, 1, is_user_provided),
-    SEMA_METAFUNCTION(bool, 1, 1, is_user_declared),
-    SEMA_METAFUNCTION(metaInfo, 2, 2, reflect_result),
-    SEMA_METAFUNCTION(metaInfo, 10, 10, data_member_spec),
-    SEMA_METAFUNCTION(metaInfo, 3, 3, define_aggregate),
-    SEMA_METAFUNCTION(spliceFromArg, 2, 2, offset_of),
-    SEMA_METAFUNCTION(sizeT, 1, 1, size_of),
-    SEMA_METAFUNCTION(spliceFromArg, 2, 2, bit_offset_of),
-    SEMA_METAFUNCTION(sizeT, 1, 1, bit_size_of),
-    SEMA_METAFUNCTION(sizeT, 1, 1, alignment_of),
+    SEMA_METAFUNCTION(SpliceFromArg, 4, 4, identifier_of),
+    SEMA_METAFUNCTION(Bool, 1, 1, has_identifier),
+    SEMA_METAFUNCTION(Size, 1, 1, operator_of),
+    SEMA_METAFUNCTION(SourceLoc, 1, 1, source_location_of),
+    SEMA_METAFUNCTION(MetaInfo, 1, 1, type_of),
+    SEMA_METAFUNCTION(MetaInfo, 1, 1, parent_of),
+    SEMA_METAFUNCTION(MetaInfo, 1, 1, underlying_entity_of),
+    SEMA_METAFUNCTION(MetaInfo, 1, 1, proxied_entity_of),
+    SEMA_METAFUNCTION(MetaInfo, 1, 1, object_of),
+    SEMA_METAFUNCTION(MetaInfo, 1, 1, constant_of),
+    SEMA_METAFUNCTION(MetaInfo, 1, 1, template_of),
+    SEMA_METAFUNCTION(MetaInfo, 4, 4, substitute),
+    SEMA_METAFUNCTION(SpliceFromArg, 2, 2, extract),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_public),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_protected),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_private),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_virtual),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_pure_virtual),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_override),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_deleted),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_defaulted),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_explicit),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_noexcept),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_bit_field),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_enumerator),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_final),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_const),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_volatile),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_mutable_member),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_lvalue_reference_qualified),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_rvalue_reference_qualified),
+    SEMA_METAFUNCTION(Bool, 1, 1, has_static_storage_duration),
+    SEMA_METAFUNCTION(Bool, 1, 1, has_thread_storage_duration),
+    SEMA_METAFUNCTION(Bool, 1, 1, has_automatic_storage_duration),
+    SEMA_METAFUNCTION(Bool, 1, 1, has_internal_linkage),
+    SEMA_METAFUNCTION(Bool, 1, 1, has_module_linkage),
+    SEMA_METAFUNCTION(Bool, 1, 1, has_external_linkage),
+    SEMA_METAFUNCTION(Bool, 1, 1, has_linkage),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_class_member),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_namespace_member),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_nonstatic_data_member),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_static_member),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_base),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_data_member_spec),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_namespace),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_function),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_variable),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_type),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_alias),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_entity_proxy),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_complete_type),
+    SEMA_METAFUNCTION(Bool, 1, 1, has_complete_definition),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_enumerable_type),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_template),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_function_template),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_variable_template),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_class_template),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_alias_template),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_conversion_function_template),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_operator_function_template),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_literal_operator_template),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_constructor_template),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_concept),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_structured_binding),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_value),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_object),
+    SEMA_METAFUNCTION(Bool, 1, 1, has_template_arguments),
+    SEMA_METAFUNCTION(Bool, 1, 1, has_default_member_initializer),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_conversion_function),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_operator_function),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_literal_operator),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_constructor),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_default_constructor),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_copy_constructor),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_move_constructor),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_assignment),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_copy_assignment),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_move_assignment),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_destructor),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_special_member_function),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_user_provided),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_user_declared),
+    SEMA_METAFUNCTION(MetaInfo, 2, 2, reflect_result),
+    SEMA_METAFUNCTION(MetaInfo, 10, 10, data_member_spec),
+    SEMA_METAFUNCTION(MetaInfo, 3, 3, define_aggregate),
+    SEMA_METAFUNCTION(SpliceFromArg, 2, 2, offset_of),
+    SEMA_METAFUNCTION(Size, 1, 1, size_of),
+    SEMA_METAFUNCTION(SpliceFromArg, 2, 2, bit_offset_of),
+    SEMA_METAFUNCTION(Size, 1, 1, bit_size_of),
+    SEMA_METAFUNCTION(Size, 1, 1, alignment_of),
 
-    SEMA_METAFUNCTION_DUMMY(101),
-    SEMA_METAFUNCTION_DUMMY(102),
-    SEMA_METAFUNCTION_DUMMY(103),
-    SEMA_METAFUNCTION_DUMMY(104),
-    SEMA_METAFUNCTION_DUMMY(105),
-    SEMA_METAFUNCTION_DUMMY(106),
-    SEMA_METAFUNCTION_DUMMY(107),
-    SEMA_METAFUNCTION_DUMMY(108),
-    SEMA_METAFUNCTION_DUMMY(109),
-    SEMA_METAFUNCTION_DUMMY(110),
+    SEMA_METAFUNCTION_PLACEHOLDER(101),
+    SEMA_METAFUNCTION_PLACEHOLDER(102),
+    SEMA_METAFUNCTION_PLACEHOLDER(103),
+    SEMA_METAFUNCTION_PLACEHOLDER(104),
+    SEMA_METAFUNCTION_PLACEHOLDER(105),
+    SEMA_METAFUNCTION_PLACEHOLDER(106),
+    SEMA_METAFUNCTION_PLACEHOLDER(107),
+    SEMA_METAFUNCTION_PLACEHOLDER(108),
+    SEMA_METAFUNCTION_PLACEHOLDER(109),
+    SEMA_METAFUNCTION_PLACEHOLDER(110),
 
     // P3096 metafunction extensions
-    SEMA_METAFUNCTION(metaInfo, 3, 3, get_ith_parameter_of),
-    SEMA_METAFUNCTION(bool, 1, 1, has_ellipsis_parameter),
-    SEMA_METAFUNCTION(bool, 1, 1, has_default_argument),
-    SEMA_METAFUNCTION(bool, 1, 1, is_explicit_object_parameter),
-    SEMA_METAFUNCTION(bool, 1, 1, is_function_parameter),
-    SEMA_METAFUNCTION(metaInfo, 1, 1, return_type_of),
-    SEMA_METAFUNCTION(metaInfo, 1, 1, variable_of),
+    SEMA_METAFUNCTION(MetaInfo, 3, 3, get_ith_parameter_of),
+    SEMA_METAFUNCTION(Bool, 1, 1, has_ellipsis_parameter),
+    SEMA_METAFUNCTION(Bool, 1, 1, has_default_argument),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_explicit_object_parameter),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_function_parameter),
+    SEMA_METAFUNCTION(MetaInfo, 1, 1, return_type_of),
+    SEMA_METAFUNCTION(MetaInfo, 1, 1, variable_of),
 
-    SEMA_METAFUNCTION_DUMMY(118),
-    SEMA_METAFUNCTION_DUMMY(119),
-    SEMA_METAFUNCTION_DUMMY(120),
+    SEMA_METAFUNCTION_PLACEHOLDER(118),
+    SEMA_METAFUNCTION_PLACEHOLDER(119),
+    SEMA_METAFUNCTION_PLACEHOLDER(120),
 
     // P3394 annotation metafunction extensions
-    SEMA_METAFUNCTION(metaInfo, 3, 3, get_ith_annotation_of),
-    SEMA_METAFUNCTION(bool, 1, 1, is_annotation),
-    SEMA_METAFUNCTION(metaInfo, 2, 2, annotate),
+    SEMA_METAFUNCTION(MetaInfo, 3, 3, get_ith_annotation_of),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_annotation),
+    SEMA_METAFUNCTION(MetaInfo, 2, 2, annotate),
 
-    SEMA_METAFUNCTION_DUMMY(124),
-    SEMA_METAFUNCTION_DUMMY(125),
+    SEMA_METAFUNCTION_PLACEHOLDER(124),
+    SEMA_METAFUNCTION_PLACEHOLDER(125),
 
     // P3493 accessibility extensions
-    SEMA_METAFUNCTION(metaInfo, 0, 0, current_access_context),
-    SEMA_METAFUNCTION(bool, 3, 3, is_accessible),
+    SEMA_METAFUNCTION(MetaInfo, 0, 0, current_access_context),
+    SEMA_METAFUNCTION(Bool, 3, 3, is_accessible),
 
-    SEMA_METAFUNCTION_DUMMY(128),
-    SEMA_METAFUNCTION_DUMMY(129),
-    SEMA_METAFUNCTION_DUMMY(130),
+    SEMA_METAFUNCTION_PLACEHOLDER(128),
+    SEMA_METAFUNCTION_PLACEHOLDER(129),
+    SEMA_METAFUNCTION_PLACEHOLDER(130),
 
     // Other bespoke functions (not proposed at this time)
-    SEMA_METAFUNCTION(bool, 1, 1, is_access_specified),
-    SEMA_METAFUNCTION(metaInfo, 5, 5, reflect_invoke),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_access_specified),
+    SEMA_METAFUNCTION(MetaInfo, 5, 5, reflect_invoke),
 };
 
-#undef SEMA_METAFUNCTION_DUMMY
+#undef SEMA_METAFUNCTION_PLACEHOLDER
 #undef SEMA_METAFUNCTION
 
 constexpr std::size_t NumMetafunctions =
     static_cast<std::size_t>(MetaFunctionID::sentinel);
-static_assert(NumMetafunctions == sizeof(Metafunctions) / sizeof(Metafunction));
-
-// -----------------------------------------------------------------------------
-// class Metafunction implementation
-// -----------------------------------------------------------------------------
-
-bool Metafunction::evaluate(const MetaFunctionEvalContext &EvalCtx) const {
-  return ImplFn(EvalCtx);
-}
-
-bool Metafunction::Lookup(MetaFunctionID ID, const Metafunction *&result) {
-  if (llvm::to_underlying(ID) >= NumMetafunctions)
-    return true;
-
-  result = &Metafunctions[llvm::to_underlying(ID)];
-  return result->ImplFn == nullptr;
-}
+static_assert(NumMetafunctions == sizeof(Metafunctions) / sizeof(MetaFunction));
+#pragma endregion
 
 // -----------------------------------------------------------------------------
 // Metafunction helper functions
 // -----------------------------------------------------------------------------
 
-static APValue makeBool(ASTContext &C, bool B) {
+#pragma region Metafunction Helper Functions
+APValue makeBool(ASTContext &C, bool B) {
   return APValue(C.MakeIntValue(B, C.BoolTy));
 }
 
-static APValue makeReflection(std::nullptr_t) {
-  return APValue(ReflectionKind::Null, nullptr);
+APValue makeReflection(std::nullptr_t) {
+  return {ReflectionKind::Null, nullptr};
 }
 
-static APValue makeReflection(QualType QT) {
-  return APValue(ReflectionKind::Type, QT.getAsOpaquePtr());
+APValue makeReflection(QualType QT) {
+  return {ReflectionKind::Type, QT.getAsOpaquePtr()};
 }
 
-static APValue makeReflection(Decl *D) {
+APValue makeReflection(Decl *D) {
   if (isa<NamespaceDecl>(D) || isa<NamespaceAliasDecl>(D) ||
       isa<TranslationUnitDecl>(D))
-    return APValue(ReflectionKind::Namespace, D);
+    return {ReflectionKind::Namespace, D};
   else if (isa<TemplateDecl>(D))
-    return APValue(ReflectionKind::Template, D);
+    return {ReflectionKind::Template, D};
   else if (isa<UsingShadowDecl>(D))
-    return APValue(ReflectionKind::EntityProxy, D);
+    return {ReflectionKind::EntityProxy, D};
   else if (isa<ParmVarDecl>(D))
-    return APValue(ReflectionKind::Parameter, D);
+    return {ReflectionKind::Parameter, D};
 
-  return APValue(ReflectionKind::Declaration, D);
+  return {ReflectionKind::Declaration, D};
 }
 
-static APValue makeReflection(TemplateName TName) {
-  return APValue(ReflectionKind::Template, TName.getAsVoidPointer());
+APValue makeReflection(TemplateName TName) {
+  return {ReflectionKind::Template, TName.getAsVoidPointer()};
 }
 
-static APValue makeReflection(CXXBaseSpecifier *Base) {
-  return APValue(ReflectionKind::BaseSpecifier, Base);
+APValue makeReflection(CXXBaseSpecifier *Base) {
+  return {ReflectionKind::BaseSpecifier, Base};
 }
 
-static APValue makeReflection(TagDataMemberSpec *TDMS) {
-  return APValue(ReflectionKind::DataMemberSpec, TDMS);
+APValue makeReflection(TagDataMemberSpec *TDMS) {
+  return {ReflectionKind::DataMemberSpec, TDMS};
 }
 
-static APValue makeReflection(CXX26AnnotationAttr *A) {
-  return APValue(ReflectionKind::Annotation, A);
+APValue makeReflection(CXX26AnnotationAttr *A) {
+  return {ReflectionKind::Annotation, A};
 }
 
-static Expr *makeStrLiteral(StringRef Str, ASTContext &C, bool Utf8) {
+Expr *makeStrLiteral(StringRef Str, ASTContext &C, bool Utf8) {
   QualType ConstCharTy = (Utf8 ? C.Char8Ty : C.CharTy).withConst();
 
   // Get the type for 'const char[Str.size()]'.
@@ -429,8 +409,7 @@ static Expr *makeStrLiteral(StringRef Str, ASTContext &C, bool Utf8) {
   return StringLiteral::Create(C, Str, SLK, false, StrLitTy, SourceLocation{});
 }
 
-// todo [merge:yukino:maybe-revert]
-static const Type *getTypeForDecl(const Decl *D) {
+const Type *getTypeForDecl(const Decl *D) {
   assert(D && "declaration is nullptr");
   auto &Context = D->getASTContext();
   const Type *T = nullptr;
@@ -448,13 +427,22 @@ static const Type *getTypeForDecl(const Decl *D) {
   return T;
 }
 
-// todo: Yukino: SetAndSucceed clean up & add util functions
-static bool SetAndSucceed(APValue &Out, const APValue &Result) {
+bool SetAndSucceed(APValue &Out, const APValue &Result) {
   Out = Result;
   return false;
 }
 
-static TemplateName findTemplateOfDecl(const Decl *D) {
+bool SetBoolAndSucceed(const MetaFunctionEvalContext &EvalCtx, bool Result) {
+  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, Result));
+}
+
+template <typename R>
+bool SetReflectionAndSucceed(const MetaFunctionEvalContext &EvalCtx, R &&Refl) {
+  return SetAndSucceed(*EvalCtx.Result, makeReflection(std::forward<R>(Refl)));
+}
+#pragma endregion
+
+TemplateName findTemplateOfDecl(const Decl *D) {
   TemplateDecl *TDecl = nullptr;
   if (const auto *FD = dyn_cast<FunctionDecl>(D)) {
     if (FunctionTemplateSpecializationInfo *Info =
@@ -470,12 +458,7 @@ static TemplateName findTemplateOfDecl(const Decl *D) {
   return TDecl ? TemplateName(TDecl) : TemplateName();
 }
 
-static TemplateName findTemplateOfType(QualType QT) {
-  // todo [merge:yukino:maybe-revert]
-  // If it's an ElaboratedType, get the underlying NamedType.
-  // if (const ElaboratedType *ET = dyn_cast<ElaboratedType>(QT))
-  // QT = ET->getNamedType();
-
+TemplateName findTemplateOfType(QualType QT) {
   if (auto *TST = dyn_cast<TemplateSpecializationType>(QT)) {
     TemplateName TName = TST->getTemplateName();
     if (TName.getKind() == TemplateName::QualifiedTemplate)
@@ -487,11 +470,10 @@ static TemplateName findTemplateOfType(QualType QT) {
     if (auto *CTSD = dyn_cast<ClassTemplateSpecializationDecl>(CXXRD))
       return TemplateName(CTSD->getSpecializedTemplate());
 
-  return TemplateName();
+  return {};
 }
 
-static void getTemplateName(std::string &Result, ASTContext &C,
-                            TemplateName TName) {
+void getTemplateName(std::string &Result, ASTContext &C, TemplateName TName) {
   PrintingPolicy PP = C.getPrintingPolicy();
   {
     llvm::raw_string_ostream NameOut(Result);
@@ -499,7 +481,7 @@ static void getTemplateName(std::string &Result, ASTContext &C,
   }
 }
 
-static void getDeclName(std::string &Result, ASTContext &C, Decl *D) {
+void getDeclName(std::string &Result, ASTContext &C, Decl *D) {
   if (TemplateName TName = findTemplateOfDecl(D); !TName.isNull())
     return getTemplateName(Result, C, TName);
 
@@ -512,7 +494,7 @@ static void getDeclName(std::string &Result, ASTContext &C, Decl *D) {
   }
 }
 
-static bool getParameterName(ParmVarDecl *PVD, std::string &Out) {
+bool getParameterName(ParmVarDecl *PVD, std::string &Out) {
   // Parameters instantiated from function parameter packs are not considered
   // to have identifiers.
   if (auto STTPT = dyn_cast<SubstTemplateTypeParmType>(PVD->getType());
@@ -554,7 +536,7 @@ static bool getParameterName(ParmVarDecl *PVD, std::string &Out) {
   return Consistent;
 }
 
-static ParmVarDecl *getMostRecentParmVarDecl(ParmVarDecl *PVD) {
+ParmVarDecl *getMostRecentParmVarDecl(ParmVarDecl *PVD) {
   // TODO(P2996): This will crash if we're in the trailing requires-clause of
   // a function declaration, since the DeclContext is not the function but the
   // TranslationUnitDecl.
@@ -563,12 +545,8 @@ static ParmVarDecl *getMostRecentParmVarDecl(ParmVarDecl *PVD) {
   return FD->getParamDecl(PVD->getFunctionScopeIndex());
 }
 
-static NamedDecl *findTypeDecl(QualType QT) {
-  // todo [merge:yukino:maybe-revert]
-  // If it's an ElaboratedType, get the underlying NamedType.
-  // if (const ElaboratedType *ET = dyn_cast<ElaboratedType>(QT))
-  // QT = ET->getNamedType();
-
+#pragma region FindDecl Helpers
+NamedDecl *findTypeDecl(QualType QT) {
   // Get the type's declaration.
   NamedDecl *D = nullptr;
   if (auto *TDT = dyn_cast<TypedefType>(QT))
@@ -602,57 +580,52 @@ static NamedDecl *findTypeDecl(QualType QT) {
   return D;
 }
 
-static bool findTypeDeclLoc(MetaFunctionEvalContext EvalCtx, QualType QT) {
-  // todo [merge:yukino:maybe-revert]
-  // If it's an ElaboratedType, get the underlying NamedType.
-  // if (const ElaboratedType *ET = dyn_cast<ElaboratedType>(QT))
-  // QT = ET->getNamedType();
+bool findWhateverDeclLocWithLoc(const MetaFunctionEvalContext &EvalCtx,
+                                SourceLocation BLoc, SourceLocation RParenLoc,
+                                DeclContext *Context) {
+  SourceLocExpr *SLE = new (*EvalCtx.C)
+      SourceLocExpr(*EvalCtx.C, SourceLocIdentKind::SourceLocStruct,
+                    EvalCtx.ResultTy, BLoc, RParenLoc, Context);
+  return !EvalCtx.Evaluator(*EvalCtx.Result, SLE, true);
+}
 
+bool findWhateverDeclLoc(const MetaFunctionEvalContext &EvalCtx, Decl *D) {
+  return findWhateverDeclLocWithLoc(
+      EvalCtx, D ? D->getLocation() : SourceLocation(), SourceLocation(),
+      D ? D->getDeclContext() : nullptr);
+}
+
+bool findTypeDeclLoc(const MetaFunctionEvalContext &EvalCtx, QualType QT) {
   // Get the type's declaration.
   NamedDecl *D = findTypeDecl(QT);
-
-  SourceLocExpr *SLE = new (*EvalCtx.C)
-      SourceLocExpr(*EvalCtx.C, SourceLocIdentKind::SourceLocStruct,
-                    EvalCtx.ResultTy, D ? D->getLocation() : SourceLocation(),
-                    SourceLocation(), D ? D->getDeclContext() : nullptr);
-
-  return !EvalCtx.Evaluator(*EvalCtx.Result, SLE, true);
+  return findWhateverDeclLoc(EvalCtx, D);
 }
 
-static bool findDeclLoc(MetaFunctionEvalContext EvalCtx, Decl *D) {
-  SourceLocExpr *SLE = new (*EvalCtx.C)
-      SourceLocExpr(*EvalCtx.C, SourceLocIdentKind::SourceLocStruct,
-                    EvalCtx.ResultTy, D ? D->getLocation() : SourceLocation(),
-                    SourceLocation(), D ? D->getDeclContext() : nullptr);
-  return !EvalCtx.Evaluator(*EvalCtx.Result, SLE, true);
+bool findDeclLoc(const MetaFunctionEvalContext &EvalCtx, Decl *D) {
+  return findWhateverDeclLoc(EvalCtx, D);
 }
 
-static bool findBaseSpecLoc(MetaFunctionEvalContext EvalCtx,
-                            CXXBaseSpecifier *B) {
-  SourceLocExpr *SLE = new (*EvalCtx.C) SourceLocExpr(
-      *EvalCtx.C, SourceLocIdentKind::SourceLocStruct, EvalCtx.ResultTy,
-      B->getBeginLoc(), SourceLocation(), B->getDerived()->getDeclContext());
-  return !EvalCtx.Evaluator(*EvalCtx.Result, SLE, true);
+bool findBaseSpecLoc(const MetaFunctionEvalContext &EvalCtx,
+                     CXXBaseSpecifier *B) {
+  return findWhateverDeclLocWithLoc(EvalCtx, B->getBeginLoc(), SourceLocation(),
+                                    B->getDerived()->getDeclContext());
 }
 
-static bool findAnnotLoc(MetaFunctionEvalContext EvalCtx,
-                         CXX26AnnotationAttr *A) {
-  SourceLocExpr *SLE = new (*EvalCtx.C)
-      SourceLocExpr(*EvalCtx.C, SourceLocIdentKind::SourceLocStruct,
-                    EvalCtx.ResultTy, A->getEqLoc(), SourceLocation(), nullptr);
-  return !EvalCtx.Evaluator(*EvalCtx.Result, SLE, true);
+bool findAnnotLoc(const MetaFunctionEvalContext &EvalCtx,
+                  CXX26AnnotationAttr *A) {
+  return findWhateverDeclLocWithLoc(EvalCtx, A->getEqLoc(), SourceLocation(),
+                                    nullptr);
 }
+#pragma endregion
 
-static QualType desugarType(QualType QT, bool UnwrapAliases, bool DropCV,
-                            bool DropRefs) {
+#pragma region Elaborated Types & Type Aliases
+QualType desugarType(QualType QT, bool UnwrapAliases, bool DropCV,
+                     bool DropRefs) {
   bool IsConst = QT.isConstQualified();
   bool IsVolatile = QT.isVolatileQualified();
 
   while (true) {
     QT = QualType(QT.getTypePtr(), 0);
-    // todo [merge:yukino:maybe-revert]
-    // if (const ElaboratedType *ET = dyn_cast<ElaboratedType>(QT))
-    // QT = ET->getNamedType();
     if (auto *TDT = dyn_cast<TypedefType>(QT); TDT && UnwrapAliases)
       QT = TDT->desugar();
     else if (auto *UT = dyn_cast<UsingType>(QT); TDT && UnwrapAliases)
@@ -681,18 +654,15 @@ static QualType desugarType(QualType QT, bool UnwrapAliases, bool DropCV,
   return QT;
 }
 
-static bool isTypeAlias(QualType QT) {
-  // todo [merge:yukino:maybe-revert]
-  // If it's an ElaboratedType, get the underlying NamedType.
-  // if (const ElaboratedType *ET = dyn_cast<ElaboratedType>(QT))
-  // QT = ET->getNamedType();
-
+bool isTypeAlias(QualType QT) {
   // If it's a TypedefType, it's an alias.
   return QT->isTypedefNameType();
 }
+#pragma endregion
 
-static void expandTemplateArgPacks(ArrayRef<TemplateArgument> Args,
-                                   SmallVectorImpl<TemplateArgument> &Out) {
+#pragma region Template Helpers
+void expandTemplateArgPacks(ArrayRef<TemplateArgument> Args,
+                            SmallVectorImpl<TemplateArgument> &Out) {
   for (const TemplateArgument &Arg : Args)
     if (Arg.getKind() == TemplateArgument::Pack)
       for (const TemplateArgument &TA : Arg.getPackAsArray())
@@ -706,9 +676,6 @@ bool getTemplateArgumentsFromType(QualType QT,
   // Obtain the template arguments from the Type* representation
   if (auto asTmplSpecialization = QT->getAs<TemplateSpecializationType>())
     expandTemplateArgPacks(asTmplSpecialization->template_arguments(), Out);
-  // todo [merge:yukino:maybe-revert]
-  // else if (auto DTST = QT->getAs<TemplateSpecializationType>())
-    // expandTemplateArgPacks(DTST->template_arguments(), Out);
   else if (auto *CTSD = dyn_cast_or_null<ClassTemplateSpecializationDecl>(
                QT->getAsRecordDecl()))
     expandTemplateArgPacks(CTSD->getTemplateArgs().asArray(), Out);
@@ -732,10 +699,9 @@ bool getTemplateArgumentsFromDecl(Decl *D,
   return true;
 }
 
-static APValue getNthTemplateArgument(ASTContext &C,
-                                      ArrayRef<TemplateArgument> templateArgs,
-                                      EvalFn Evaluator, APValue Sentinel,
-                                      size_t Idx) {
+APValue getNthTemplateArgument(ASTContext &C,
+                               ArrayRef<TemplateArgument> templateArgs,
+                               EvalFn Evaluator, APValue Sentinel, size_t Idx) {
   if (Idx >= templateArgs.size())
     return Sentinel;
 
@@ -788,18 +754,18 @@ static APValue getNthTemplateArgument(ASTContext &C,
   llvm_unreachable("Unknown template argument type");
 }
 
-static bool isTemplateSpecialization(QualType QT) {
+bool isTemplateSpecialization(QualType QT) {
   if (isa<UsingType>(QT) || isa<TypedefType>(QT))
     return false;
 
   return isa<TemplateSpecializationType>(QT) ||
-         // todo [merge:yukino:maybe-revert]
-         // isa<DependentTemplateSpecializationType>(QT) ||
          isa_and_nonnull<ClassTemplateSpecializationDecl>(
              QT->getAsCXXRecordDecl());
 }
+#pragma endregion
 
-static size_t getBitOffsetOfField(ASTContext &C, const FieldDecl *FD) {
+#pragma region Offset Helpers
+size_t getBitOffsetOfField(ASTContext &C, const FieldDecl *FD) {
   const RecordDecl *Parent = FD->getParent();
   assert(Parent && "no parent for field!");
 
@@ -807,7 +773,7 @@ static size_t getBitOffsetOfField(ASTContext &C, const FieldDecl *FD) {
   return Layout.getFieldOffset(FD->getFieldIndex());
 }
 
-static size_t getOffsetOfBase(ASTContext &C, const CXXBaseSpecifier *Base) {
+size_t getOffsetOfBase(ASTContext &C, const CXXBaseSpecifier *Base) {
   // todo [merge:yukino:maybe-revert]
   const CXXRecordDecl *Derived = Base->getDerived();
   assert(Derived && "no parent for field!");
@@ -825,13 +791,9 @@ static size_t getOffsetOfBase(ASTContext &C, const CXXBaseSpecifier *Base) {
   else
     return Layout.getBaseClassOffset(RD).getQuantity();
 }
+#pragma endregion
 
-static bool ensureDeclared(ASTContext &C, QualType QT, SourceLocation SpecLoc) {
-  // todo [merge:yukino:maybe-revert]
-  // If it's an ElaboratedType, get the underlying NamedType.
-  // if (const ElaboratedType *ET = dyn_cast<ElaboratedType>(QT))
-  // QT = ET->getNamedType();
-
+bool ensureDeclared(ASTContext &C, QualType QT, SourceLocation SpecLoc) {
   // Get the type's declaration.
   if (auto *TS = dyn_cast<TemplateSpecializationType>(QT)) {
     if (auto *CTD = dyn_cast<ClassTemplateDecl>(
@@ -853,7 +815,7 @@ static bool ensureDeclared(ASTContext &C, QualType QT, SourceLocation SpecLoc) {
   return true;
 }
 
-static bool isReflectableDecl(MetaFunctionEvalContext EvalCtx, Decl *D) {
+bool isReflectableDecl(const MetaFunctionEvalContext &EvalCtx, Decl *D) {
   assert(D && "null declaration");
 
   if (D != D->getCanonicalDecl()) {
@@ -900,8 +862,8 @@ static bool isReflectableDecl(MetaFunctionEvalContext EvalCtx, Decl *D) {
 }
 
 /// Filter non-reflectable members.
-static Decl *findIterableMember(MetaFunctionEvalContext EvalCtx, Decl *D,
-                                bool Inclusive) {
+Decl *findIterableMember(const MetaFunctionEvalContext &EvalCtx, Decl *D,
+                         bool Inclusive) {
   if (!D)
     return D;
 
@@ -1003,7 +965,7 @@ bool isSpecialMember(FunctionDecl *FD) {
   return IsSpecial;
 }
 
-static bool isFunctionOrMethodNoexcept(const QualType QT) {
+bool isFunctionOrMethodNoexcept(const QualType QT) {
   const Type *T = QT.getTypePtr();
 
   if (T->isFunctionProtoType()) {
@@ -1021,7 +983,7 @@ static bool isFunctionOrMethodNoexcept(const QualType QT) {
   return false;
 }
 
-static bool isConstQualifiedType(QualType QT) {
+bool isConstQualifiedType(QualType QT) {
   bool result = QT.isConstQualified();
   if (auto *FPT = dyn_cast<FunctionProtoType>(QT))
     result |= FPT->isConst();
@@ -1029,7 +991,7 @@ static bool isConstQualifiedType(QualType QT) {
   return result;
 }
 
-static bool isVolatileQualifiedType(QualType QT) {
+bool isVolatileQualifiedType(QualType QT) {
   bool result = QT.isVolatileQualified();
   if (auto *FPT = dyn_cast<FunctionProtoType>(QT))
     result |= FPT->isVolatile();
@@ -1080,7 +1042,7 @@ QualType ComputeResultType(QualType ExprTy, const APValue &V) {
                      /*DropRefs=*/true);
 }
 
-static APValue MaybeUnproxy(ASTContext &C, APValue RV, bool Dealias = true) {
+APValue MaybeUnproxy(ASTContext &C, APValue RV, bool Dealias = true) {
   assert(RV.isReflection());
 
   if (!RV.isReflectedEntityProxy())
@@ -1095,12 +1057,12 @@ static APValue MaybeUnproxy(ASTContext &C, APValue RV, bool Dealias = true) {
       QT = desugarType(QT, /*UnwrapAlias=*/true, /*DropCV=*/false,
                        /*DropRefs=*/false);
 
-    return APValue(ReflectionKind::Type, QT.getAsOpaquePtr());
+    return {ReflectionKind::Type, QT.getAsOpaquePtr()};
   } else if (auto *T = dyn_cast<TemplateDecl>(ND)) {
-    return APValue(ReflectionKind::Template, T);
+    return {ReflectionKind::Template, T};
   }
 
-  return APValue(ReflectionKind::Declaration, ND);
+  return {ReflectionKind::Declaration, ND};
 }
 
 // -----------------------------------------------------------------------------
@@ -1223,11 +1185,21 @@ bool DiagnoseReflectionKind(DiagFn Diagnoser, SourceRange Range,
 
   return true;
 }
+#pragma endregion
+
+// -----------------------------------------------------------------------------
+// Yukino's extension helper functions
+// -----------------------------------------------------------------------------
+
+#pragma region Yukino's extension helpers
+
+#pragma endregion
 
 // -----------------------------------------------------------------------------
 // Metafunction implementations
 // -----------------------------------------------------------------------------
 
+#pragma region Metafunctions for Enumerables
 bool get_begin_enumerator_decl_of(const MetaFunctionEvalContext &EvalCtx) {
   assert(EvalCtx.Args[0]->getType()->isReflectionType());
   assert(EvalCtx.ResultTy == C.MetaInfoTy);
@@ -1248,7 +1220,7 @@ bool get_begin_enumerator_decl_of(const MetaFunctionEvalContext &EvalCtx) {
     if (auto enumDecl = dyn_cast_or_null<EnumDecl>(D)) {
       if (auto itr = enumDecl->enumerator_begin();
           itr != enumDecl->enumerator_end()) {
-        return SetAndSucceed(*EvalCtx.Result, makeReflection(*itr));
+        return SetReflectionAndSucceed(EvalCtx, *itr);
       }
       return SetAndSucceed(*EvalCtx.Result, Sentinel);
     }
@@ -1290,7 +1262,7 @@ bool get_next_enumerator_decl_of(const MetaFunctionEvalContext &EvalCtx) {
   case ReflectionKind::Declaration: {
     Decl *currEnumConstDecl = RV.getReflectedDecl();
     if (auto nextEnumConstDecl = currEnumConstDecl->getNextDeclInContext()) {
-      return SetAndSucceed(*EvalCtx.Result, makeReflection(nextEnumConstDecl));
+      return SetReflectionAndSucceed(EvalCtx, nextEnumConstDecl);
     }
     return SetAndSucceed(*EvalCtx.Result, Sentinel);
   }
@@ -1350,7 +1322,7 @@ bool get_ith_base_of(const MetaFunctionEvalContext &EvalCtx) {
 
       // the unqualified base class
       CXXBaseSpecifier *baseClassItr = cxxRecordDecl->bases_begin() + idx;
-      return SetAndSucceed(*EvalCtx.Result, makeReflection(baseClassItr));
+      return SetReflectionAndSucceed(EvalCtx, baseClassItr);
     }
     return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
                              diag::metafn_cannot_introspect_type)
@@ -1566,8 +1538,9 @@ bool is_structural_type(const MetaFunctionEvalContext &EvalCtx) {
     result = T->isStructuralType();
   }
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
+#pragma endregion
 
 bool map_decl_to_entity(const MetaFunctionEvalContext &EvalCtx) {
   assert(EvalCtx.ResultTy == EvalCtx.C->MetaInfoTy);
@@ -1580,9 +1553,9 @@ bool map_decl_to_entity(const MetaFunctionEvalContext &EvalCtx) {
 
   if (auto *TyDecl = dyn_cast<TypeDecl>(D)) {
     QualType QT = EvalCtx.C->getTypeDeclType(TyDecl);
-    return SetAndSucceed(*EvalCtx.Result, makeReflection(QT));
+    return SetReflectionAndSucceed(EvalCtx, QT);
   }
-  return SetAndSucceed(*EvalCtx.Result, makeReflection(D));
+  return SetReflectionAndSucceed(EvalCtx, D);
 }
 
 bool identifier_of(const MetaFunctionEvalContext &EvalCtx) {
@@ -1816,7 +1789,7 @@ bool has_identifier(const MetaFunctionEvalContext &EvalCtx) {
     llvm_unreachable("proxies should already have been unwrapped");
   }
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, HasIdentifier));
+  return SetBoolAndSucceed(EvalCtx, HasIdentifier);
 }
 
 bool operator_of(const MetaFunctionEvalContext &EvalCtx) {
@@ -1943,7 +1916,7 @@ bool type_of(const MetaFunctionEvalContext &EvalCtx) {
     QualType QT = desugarType(RV.getTypeOfReflectedResult(*EvalCtx.C),
                               /*UnwrapAliases=*/true, /*DropCV=*/false,
                               /*DropRefs=*/false);
-    return SetAndSucceed(*EvalCtx.Result, makeReflection(QT));
+    return SetReflectionAndSucceed(EvalCtx, QT);
   }
   case ReflectionKind::Declaration: {
     ValueDecl *VD = cast<ValueDecl>(RV.getReflectedDecl());
@@ -1959,32 +1932,32 @@ bool type_of(const MetaFunctionEvalContext &EvalCtx) {
     QualType QT = desugarType(VD->getType(),
                               /*UnwrapAliases=*/true, /*DropCV=*/false,
                               /*DropRefs=*/false);
-    return SetAndSucceed(*EvalCtx.Result, makeReflection(QT));
+    return SetReflectionAndSucceed(EvalCtx, QT);
   }
   case ReflectionKind::Parameter: {
     ParmVarDecl *PVD = RV.getReflectedParameter();
     QualType QT = desugarType(PVD->getType(),
                               /*UnwrapAliases=*/true, /*DropCV=*/true,
                               /*DropRefs=*/false);
-    return SetAndSucceed(*EvalCtx.Result, makeReflection(QT));
+    return SetReflectionAndSucceed(EvalCtx, QT);
   }
   case ReflectionKind::BaseSpecifier: {
     QualType QT = RV.getReflectedBaseSpecifier()->getType();
     QT = desugarType(QT, /*UnwrapAliases=*/true, /*DropCV=*/false,
                      /*DropRefs=*/false);
-    return SetAndSucceed(*EvalCtx.Result, makeReflection(QT));
+    return SetReflectionAndSucceed(EvalCtx, QT);
   }
   case ReflectionKind::DataMemberSpec: {
     QualType QT = RV.getReflectedDataMemberSpec()->Ty;
     QT = desugarType(QT, /*UnwrapAliases=*/true, /*DropCV=*/false,
                      /*DropRefs=*/false);
-    return SetAndSucceed(*EvalCtx.Result, makeReflection(QT));
+    return SetReflectionAndSucceed(EvalCtx, QT);
   }
   case ReflectionKind::Annotation: {
     QualType QT = RV.getReflectedAnnotation()->getArg()->getType();
     QT = desugarType(QT, /*UnwrapAliases=*/true, /*DropCV=*/true,
                      /*DropRefs=*/false);
-    return SetAndSucceed(*EvalCtx.Result, makeReflection(QT));
+    return SetReflectionAndSucceed(EvalCtx, QT);
   }
   }
   llvm_unreachable("unknown reflection kind");
@@ -2055,7 +2028,7 @@ bool parent_of(const MetaFunctionEvalContext &EvalCtx) {
     QualType QT = desugarType(QualType(getTypeForDecl(RD), 0),
                               /*UnwrapAliases=*/true, /*DropCV=*/false,
                               /*DropRefs=*/false);
-    return SetAndSucceed(*EvalCtx.Result, makeReflection(QT));
+    return SetReflectionAndSucceed(EvalCtx, QT);
   }
   }
   llvm_unreachable("unknown reflection kind");
@@ -2084,13 +2057,13 @@ bool underlying_entity_of(const MetaFunctionEvalContext &EvalCtx) {
     QualType QT = RV.getReflectedType();
     QT = desugarType(QT, /*UnwrapAliases=*/true, /*DropCV=*/false,
                      /*DropRefs=*/false);
-    return SetAndSucceed(*EvalCtx.Result, makeReflection(QT));
+    return SetReflectionAndSucceed(EvalCtx, QT);
   }
   case ReflectionKind::Namespace: {
     Decl *NS = RV.getReflectedNamespace();
     if (auto *A = dyn_cast<NamespaceAliasDecl>(NS))
       NS = A->getNamespace();
-    return SetAndSucceed(*EvalCtx.Result, makeReflection(NS));
+    return SetReflectionAndSucceed(EvalCtx, NS);
   }
   case ReflectionKind::EntityProxy:
     return SetAndSucceed(*EvalCtx.Result, MaybeUnproxy(*EvalCtx.C, RV));
@@ -2314,7 +2287,7 @@ bool template_of(const MetaFunctionEvalContext &EvalCtx) {
       return DiagnoseReflectionKind(EvalCtx.Diagnoser, EvalCtx.Range,
                                     "a template specialization");
 
-    return SetAndSucceed(*EvalCtx.Result, makeReflection(TName));
+    return SetReflectionAndSucceed(EvalCtx, TName);
   }
   case ReflectionKind::Declaration: {
     TemplateName TName = findTemplateOfDecl(RV.getReflectedDecl());
@@ -2322,7 +2295,7 @@ bool template_of(const MetaFunctionEvalContext &EvalCtx) {
       return DiagnoseReflectionKind(EvalCtx.Diagnoser, EvalCtx.Range,
                                     "a template specialization");
 
-    return SetAndSucceed(*EvalCtx.Result, makeReflection(TName));
+    return SetReflectionAndSucceed(EvalCtx, TName);
   }
   case ReflectionKind::Null:
   case ReflectionKind::Object:
@@ -2342,7 +2315,7 @@ bool template_of(const MetaFunctionEvalContext &EvalCtx) {
   llvm_unreachable("unknown reflection kind");
 }
 
-static bool CanActAsTemplateArg(const APValue &RV) {
+bool CanActAsTemplateArg(const APValue &RV) {
   switch (RV.getReflectionKind()) {
   case ReflectionKind::Type:
   case ReflectionKind::Object:
@@ -2367,9 +2340,8 @@ static bool CanActAsTemplateArg(const APValue &RV) {
   llvm_unreachable("unknown reflection kind");
 }
 
-static TemplateArgument TArgFromReflection(MetaFunctionEvalContext EvalCtx,
-                                           const APValue &RV,
-                                           SourceLocation Loc) {
+TemplateArgument TArgFromReflection(const MetaFunctionEvalContext &EvalCtx,
+                                    const APValue &RV, SourceLocation Loc) {
   switch (RV.getReflectionKind()) {
   case ReflectionKind::Type:
     return RV.getReflectedType().getCanonicalType();
@@ -2394,7 +2366,7 @@ static TemplateArgument TArgFromReflection(MetaFunctionEvalContext EvalCtx,
       break;
 
     if (!EvalCtx.Meta->EnsureInstantiated(Decl, SourceRange(Loc, Loc)))
-      return TemplateArgument();
+      return {};
 
     QualType QT = desugarType(Decl->getType(), /*UnwrapAliases=*/false,
                               /*DropCV=*/false, /*DropRefs=*/true);
@@ -2406,17 +2378,17 @@ static TemplateArgument TArgFromReflection(MetaFunctionEvalContext EvalCtx,
         *EvalCtx.C, NestedNameSpecifierLoc(), SourceLocation(), Decl, false,
         Loc, QT, VK_LValue, Decl, nullptr);
 
-    return TemplateArgument(Synthesized, true);
+    return {Synthesized, true};
   }
   case ReflectionKind::Template:
-    return TemplateArgument(RV.getReflectedTemplate());
+    return {RV.getReflectedTemplate()};
     break;
   case ReflectionKind::EntityProxy:
     llvm_unreachable("expected proxies to have been unwrapped before calling");
   default:
     llvm_unreachable("unimplemented for template argument kind");
   }
-  return TemplateArgument();
+  return {};
 }
 
 bool substitute(const MetaFunctionEvalContext &EvalCtx) {
@@ -2444,7 +2416,7 @@ bool substitute(const MetaFunctionEvalContext &EvalCtx) {
     return true;
   bool NoDiagnose = !DiagnoseAPV.getInt().getBoolValue();
   auto ElideDiagnosis = [&] {
-    return SetAndSucceed(*EvalCtx.Result, makeReflection(nullptr));
+    return SetReflectionAndSucceed(EvalCtx, nullptr);
   };
 
   SmallVector<TemplateArgument, 4> TArgs;
@@ -2543,7 +2515,7 @@ bool substitute(const MetaFunctionEvalContext &EvalCtx) {
     }
     APValue RV = makeReflection(QT);
     // EvalCtx.C->recordCachedSubstitution(SubstitutionHash, RV);
-    return SetAndSucceed(*EvalCtx.Result, makeReflection(QT));
+    return SetReflectionAndSucceed(EvalCtx, QT);
   }
   if (auto *FTD = dyn_cast<FunctionTemplateDecl>(TDecl)) {
     FunctionDecl *Spec =
@@ -2570,7 +2542,7 @@ bool substitute(const MetaFunctionEvalContext &EvalCtx) {
 
     APValue RV = makeReflection(Spec);
     // EvalCtx.C->recordCachedSubstitution(SubstitutionHash, RV);
-    return SetAndSucceed(*EvalCtx.Result, makeReflection(Spec));
+    return SetReflectionAndSucceed(EvalCtx, Spec);
   }
   if (auto *CD = dyn_cast<ConceptDecl>(TDecl)) {
     TArgs.clear();
@@ -2645,8 +2617,7 @@ bool extract(const MetaFunctionEvalContext &EvalCtx) {
         RawResultTy.getCanonicalType().getTypePtr())
       return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
                                diag::metafn_extract_type_mismatch)
-             << 1 << ObjectTy << ReturnsLValue << RawResultTy
-             << EvalCtx.Range;
+             << 1 << ObjectTy << ReturnsLValue << RawResultTy << EvalCtx.Range;
 
     Expr *OVE = new (*EvalCtx.C)
         OpaqueValueExpr(EvalCtx.Range.getBegin(), ObjectTy, VK_LValue);
@@ -2668,8 +2639,7 @@ bool extract(const MetaFunctionEvalContext &EvalCtx) {
         RawResultTy.getCanonicalType().getTypePtr())
       return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
                                diag::metafn_extract_type_mismatch)
-             << 0 << ValueTy << ReturnsLValue << RawResultTy
-             << EvalCtx.Range;
+             << 0 << ValueTy << ReturnsLValue << RawResultTy << EvalCtx.Range;
 
     return SetAndSucceed(*EvalCtx.Result, RV.getReflectedValue());
   }
@@ -2712,8 +2682,7 @@ bool extract(const MetaFunctionEvalContext &EvalCtx) {
             Decl->getType().getCanonicalType().getTypePtr())
           return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
                                    diag::metafn_extract_type_mismatch)
-                 << 1 << Decl->getType() << 1 << RawResultTy
-                 << EvalCtx.Range;
+                 << 1 << Decl->getType() << 1 << RawResultTy << EvalCtx.Range;
 
         NestedNameSpecifierLocBuilder NNSLocBuilder;
         if (auto *ParentClsDecl =
@@ -2821,8 +2790,7 @@ bool extract(const MetaFunctionEvalContext &EvalCtx) {
           RawResultTy.getCanonicalType().getTypePtr())
         return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
                                  diag::metafn_extract_entity_type_mismatch)
-               << RawResultTy << DescriptionOf(RV) << MemPtrTy
-               << EvalCtx.Range;
+               << RawResultTy << DescriptionOf(RV) << MemPtrTy << EvalCtx.Range;
 
       APValue MemPtrLV(Decl, false, ArrayRef<const CXXRecordDecl *>{});
       return SetAndSucceed(*EvalCtx.Result, MemPtrLV);
@@ -2831,8 +2799,7 @@ bool extract(const MetaFunctionEvalContext &EvalCtx) {
           RawResultTy.getCanonicalType().getTypePtr())
         return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
                                  diag::metafn_extract_type_mismatch)
-               << 2 << Decl->getType() << 0 << RawResultTy
-               << EvalCtx.Range;
+               << 2 << Decl->getType() << 0 << RawResultTy << EvalCtx.Range;
 
       return SetAndSucceed(*EvalCtx.Result, APValue(ECD->getInitVal()));
     } else {
@@ -2878,32 +2845,27 @@ bool is_ACCESS(const MetaFunctionEvalContext &EvalCtx) {
     if (const Decl *D = findTypeDecl(RV.getReflectedType()))
       HasTargetAccess = (D->getAccess() == Specifier);
 
-    return SetAndSucceed(*EvalCtx.Result,
-                         makeBool(*EvalCtx.C, HasTargetAccess));
+    return SetBoolAndSucceed(EvalCtx, HasTargetAccess);
   }
   case ReflectionKind::Declaration: {
     bool HasTargetAccess = (RV.getReflectedDecl()->getAccess() == Specifier);
-    return SetAndSucceed(*EvalCtx.Result,
-                         makeBool(*EvalCtx.C, HasTargetAccess));
+    return SetBoolAndSucceed(EvalCtx, HasTargetAccess);
   }
   case ReflectionKind::EntityProxy: {
     bool HasTargetAccess =
         (RV.getReflectedEntityProxy()->getAccess() == Specifier);
-    return SetAndSucceed(*EvalCtx.Result,
-                         makeBool(*EvalCtx.C, HasTargetAccess));
+    return SetBoolAndSucceed(EvalCtx, HasTargetAccess);
   }
   case ReflectionKind::Template: {
     const Decl *D = RV.getReflectedTemplate().getAsTemplateDecl();
 
     bool HasTargetAccess = (D->getAccess() == Specifier);
-    return SetAndSucceed(*EvalCtx.Result,
-                         makeBool(*EvalCtx.C, HasTargetAccess));
+    return SetBoolAndSucceed(EvalCtx, HasTargetAccess);
   }
   case ReflectionKind::BaseSpecifier: {
     CXXBaseSpecifier *Base = RV.getReflectedBaseSpecifier();
     bool HasTargetAccess = (Base->getAccessSpecifier() == Specifier);
-    return SetAndSucceed(*EvalCtx.Result,
-                         makeBool(*EvalCtx.C, HasTargetAccess));
+    return SetBoolAndSucceed(EvalCtx, HasTargetAccess);
   }
   case ReflectionKind::Null:
   case ReflectionKind::Object:
@@ -2912,14 +2874,13 @@ bool is_ACCESS(const MetaFunctionEvalContext &EvalCtx) {
   case ReflectionKind::Parameter:
   case ReflectionKind::Annotation:
   case ReflectionKind::Namespace:
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, false));
+    return SetBoolAndSucceed(EvalCtx, false);
   }
   llvm_unreachable("invalid reflection type");
 }
 
 template <AccessSpecifier AS>
-static inline bool
-is_ClassMember_ACCESS(const MetaFunctionEvalContext &EvalCtx) {
+inline bool is_ClassMember_ACCESS(const MetaFunctionEvalContext &EvalCtx) {
   [[maybe_unused]] bool scratch = is_class_member(EvalCtx);
 
   if (const bool isClassMember = EvalCtx.Result->getInt().getBoolValue();
@@ -2960,11 +2921,11 @@ bool is_virtual(const MetaFunctionEvalContext &EvalCtx) {
   case ReflectionKind::Declaration: {
     if (auto *MD = dyn_cast<CXXMethodDecl>(RV.getReflectedDecl()))
       IsVirtual = MD->isVirtual();
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsVirtual));
+    return SetBoolAndSucceed(EvalCtx, IsVirtual);
   }
   case ReflectionKind::BaseSpecifier: {
     IsVirtual = RV.getReflectedBaseSpecifier()->isVirtual();
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsVirtual));
+    return SetBoolAndSucceed(EvalCtx, IsVirtual);
   }
   case ReflectionKind::Null:
   case ReflectionKind::Type:
@@ -2976,7 +2937,7 @@ bool is_virtual(const MetaFunctionEvalContext &EvalCtx) {
   case ReflectionKind::Parameter:
   case ReflectionKind::DataMemberSpec:
   case ReflectionKind::Annotation:
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsVirtual));
+    return SetBoolAndSucceed(EvalCtx, IsVirtual);
   }
   llvm_unreachable("invalid reflection type");
 }
@@ -2994,7 +2955,7 @@ bool is_pure_virtual(const MetaFunctionEvalContext &EvalCtx) {
     if (const auto *FD = dyn_cast<FunctionDecl>(RV.getReflectedDecl()))
       IsPureVirtual = FD->isPureVirtual();
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsPureVirtual));
+  return SetBoolAndSucceed(EvalCtx, IsPureVirtual);
 }
 
 bool is_override(const MetaFunctionEvalContext &EvalCtx) {
@@ -3010,7 +2971,7 @@ bool is_override(const MetaFunctionEvalContext &EvalCtx) {
     if (auto *MD = dyn_cast<CXXMethodDecl>(RV.getReflectedDecl()))
       IsOverride = MD->size_overridden_methods() > 0;
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsOverride));
+  return SetBoolAndSucceed(EvalCtx, IsOverride);
 }
 
 bool is_deleted(const MetaFunctionEvalContext &EvalCtx) {
@@ -3026,7 +2987,7 @@ bool is_deleted(const MetaFunctionEvalContext &EvalCtx) {
     if (auto *FD = dyn_cast<FunctionDecl>(RV.getReflectedDecl()))
       IsDeleted = FD->isDeleted();
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsDeleted));
+  return SetBoolAndSucceed(EvalCtx, IsDeleted);
 }
 
 bool is_defaulted(const MetaFunctionEvalContext &EvalCtx) {
@@ -3042,7 +3003,7 @@ bool is_defaulted(const MetaFunctionEvalContext &EvalCtx) {
     if (auto *FD = dyn_cast<FunctionDecl>(RV.getReflectedDecl()))
       IsDefaulted = FD->getMostRecentDecl()->isDefaulted();
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsDefaulted));
+  return SetBoolAndSucceed(EvalCtx, IsDefaulted);
 }
 
 bool is_explicit(const MetaFunctionEvalContext &EvalCtx) {
@@ -3061,7 +3022,7 @@ bool is_explicit(const MetaFunctionEvalContext &EvalCtx) {
       IsExplicit = ConvD->getExplicitSpecifier().isExplicit();
   }
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsExplicit));
+  return SetBoolAndSucceed(EvalCtx, IsExplicit);
 }
 
 bool is_noexcept(const MetaFunctionEvalContext &EvalCtx) {
@@ -3083,7 +3044,7 @@ bool is_noexcept(const MetaFunctionEvalContext &EvalCtx) {
     IsNoexcept = isFunctionOrMethodNoexcept(RV.getReflectedDecl()->getType());
   }
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsNoexcept));
+  return SetBoolAndSucceed(EvalCtx, IsNoexcept);
 }
 
 bool is_bit_field(const MetaFunctionEvalContext &EvalCtx) {
@@ -3103,7 +3064,7 @@ bool is_bit_field(const MetaFunctionEvalContext &EvalCtx) {
   } else if (RV.isReflectedDataMemberSpec()) {
     result = RV.getReflectedDataMemberSpec()->BitWidth.has_value();
   }
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool is_enumerator(const MetaFunctionEvalContext &EvalCtx) {
@@ -3118,7 +3079,7 @@ bool is_enumerator(const MetaFunctionEvalContext &EvalCtx) {
   if (RV.isReflectedDecl())
     result = isa<EnumConstantDecl>(RV.getReflectedDecl());
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool is_final(const MetaFunctionEvalContext &EvalCtx) {
@@ -3143,7 +3104,7 @@ bool is_final(const MetaFunctionEvalContext &EvalCtx) {
       result = recordDecl->hasAttr<FinalAttr>();
     }
   }
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 // todo: Yukino: SetAndSucceed clean up
@@ -3164,19 +3125,19 @@ bool is_const(const MetaFunctionEvalContext &EvalCtx) {
   case ReflectionKind::BaseSpecifier:
   case ReflectionKind::DataMemberSpec:
   case ReflectionKind::Annotation:
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, false));
+    return SetBoolAndSucceed(EvalCtx, false);
   case ReflectionKind::Type: {
     bool result = isConstQualifiedType(RV.getReflectedType());
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+    return SetBoolAndSucceed(EvalCtx, result);
   }
   case ReflectionKind::Declaration: {
     bool result = isConstQualifiedType(RV.getReflectedDecl()->getType());
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+    return SetBoolAndSucceed(EvalCtx, result);
   }
   case ReflectionKind::Object:
   case ReflectionKind::Value: {
     bool result = isConstQualifiedType(RV.getTypeOfReflectedResult(*EvalCtx.C));
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+    return SetBoolAndSucceed(EvalCtx, result);
   }
   }
   llvm_unreachable("invalid reflection type");
@@ -3199,22 +3160,22 @@ bool is_volatile(const MetaFunctionEvalContext &EvalCtx) {
   case ReflectionKind::BaseSpecifier:
   case ReflectionKind::DataMemberSpec:
   case ReflectionKind::Annotation:
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, false));
+    return SetBoolAndSucceed(EvalCtx, false);
   case ReflectionKind::Type: {
     bool result = isVolatileQualifiedType(RV.getReflectedType());
 
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+    return SetBoolAndSucceed(EvalCtx, result);
   }
   case ReflectionKind::Declaration: {
     bool result = isVolatileQualifiedType(RV.getReflectedDecl()->getType());
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+    return SetBoolAndSucceed(EvalCtx, result);
   }
   case ReflectionKind::Object:
   case ReflectionKind::Value: {
     bool result =
         isVolatileQualifiedType(RV.getTypeOfReflectedResult(*EvalCtx.C));
 
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+    return SetBoolAndSucceed(EvalCtx, result);
   }
   }
   llvm_unreachable("invalid reflection type");
@@ -3233,7 +3194,7 @@ bool is_mutable_member(const MetaFunctionEvalContext &EvalCtx) {
     if (auto *FD = dyn_cast<FieldDecl>(RV.getReflectedDecl()))
       IsMutableMember = FD->isMutable();
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsMutableMember));
+  return SetBoolAndSucceed(EvalCtx, IsMutableMember);
 }
 
 bool is_lvalue_reference_qualified(const MetaFunctionEvalContext &EvalCtx) {
@@ -3253,7 +3214,7 @@ bool is_lvalue_reference_qualified(const MetaFunctionEvalContext &EvalCtx) {
       if (auto FT = dyn_cast<FunctionProtoType>(FD->getType()))
         result = (FT->getRefQualifier() == RQ_LValue);
   }
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool is_rvalue_reference_qualified(const MetaFunctionEvalContext &EvalCtx) {
@@ -3273,7 +3234,7 @@ bool is_rvalue_reference_qualified(const MetaFunctionEvalContext &EvalCtx) {
       if (auto FT = dyn_cast<FunctionProtoType>(FD->getType()))
         result = (FT->getRefQualifier() == RQ_RValue);
   }
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool has_static_storage_duration(const MetaFunctionEvalContext &EvalCtx) {
@@ -3293,7 +3254,7 @@ bool has_static_storage_duration(const MetaFunctionEvalContext &EvalCtx) {
   } else if (RV.isReflectedObject()) {
     result = true;
   }
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool has_thread_storage_duration(const MetaFunctionEvalContext &EvalCtx) {
@@ -3309,7 +3270,7 @@ bool has_thread_storage_duration(const MetaFunctionEvalContext &EvalCtx) {
     if (const auto *VD = dyn_cast<VarDecl>(RV.getReflectedDecl()))
       result = VD->getStorageDuration() == SD_Thread;
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool has_automatic_storage_duration(const MetaFunctionEvalContext &EvalCtx) {
@@ -3325,7 +3286,7 @@ bool has_automatic_storage_duration(const MetaFunctionEvalContext &EvalCtx) {
     if (const auto *VD = dyn_cast<VarDecl>(RV.getReflectedDecl()))
       result = VD->getStorageDuration() == SD_Automatic;
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool has_internal_linkage(const MetaFunctionEvalContext &EvalCtx) {
@@ -3351,7 +3312,7 @@ bool has_internal_linkage(const MetaFunctionEvalContext &EvalCtx) {
       result = (VD->getFormalLinkage() == Linkage::Internal);
     }
   }
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool has_module_linkage(const MetaFunctionEvalContext &EvalCtx) {
@@ -3377,7 +3338,7 @@ bool has_module_linkage(const MetaFunctionEvalContext &EvalCtx) {
       result = (VD->getFormalLinkage() == Linkage::Module);
     }
   }
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool has_external_linkage(const MetaFunctionEvalContext &EvalCtx) {
@@ -3406,7 +3367,7 @@ bool has_external_linkage(const MetaFunctionEvalContext &EvalCtx) {
                 VD->getFormalLinkage() == Linkage::UniqueExternal);
     }
   }
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool has_linkage(const MetaFunctionEvalContext &EvalCtx) {
@@ -3432,7 +3393,7 @@ bool has_linkage(const MetaFunctionEvalContext &EvalCtx) {
       result = (VD->hasLinkage());
     }
   }
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool is_class_member(const MetaFunctionEvalContext &EvalCtx) {
@@ -3457,7 +3418,7 @@ bool is_class_member(const MetaFunctionEvalContext &EvalCtx) {
                ScratchCtx.Result->getReflectedType()->isRecordType();
     }
   }
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool is_namespace_member(const MetaFunctionEvalContext &EvalCtx) {
@@ -3474,7 +3435,7 @@ bool is_namespace_member(const MetaFunctionEvalContext &EvalCtx) {
     assert(Scratch.isReflection());
     result = ScratchCtx.Result->isReflectedNamespace();
   }
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool is_nonstatic_data_member(const MetaFunctionEvalContext &EvalCtx) {
@@ -3493,7 +3454,7 @@ bool is_nonstatic_data_member(const MetaFunctionEvalContext &EvalCtx) {
       result = (!FD->isBitField() || FD->getIdentifier());
     }
   }
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool is_static_member(const MetaFunctionEvalContext &EvalCtx) {
@@ -3512,7 +3473,7 @@ bool is_static_member(const MetaFunctionEvalContext &EvalCtx) {
       result = MD->isStatic();
     else if (const auto *VD = dyn_cast<VarDecl>(D))
       result = VD->isStaticDataMember();
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+    return SetBoolAndSucceed(EvalCtx, result);
   }
   case ReflectionKind::Template: {
     const Decl *D = RV.getReflectedTemplate().getAsTemplateDecl();
@@ -3523,7 +3484,7 @@ bool is_static_member(const MetaFunctionEvalContext &EvalCtx) {
       if (const auto *VD = dyn_cast<VarDecl>(VTD->getTemplatedDecl()))
         result = VD->isStaticDataMember();
     }
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+    return SetBoolAndSucceed(EvalCtx, result);
   }
   case ReflectionKind::Null:
   case ReflectionKind::Type:
@@ -3534,7 +3495,7 @@ bool is_static_member(const MetaFunctionEvalContext &EvalCtx) {
   case ReflectionKind::Parameter:
   case ReflectionKind::DataMemberSpec:
   case ReflectionKind::Annotation:
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+    return SetBoolAndSucceed(EvalCtx, result);
   case ReflectionKind::EntityProxy:
     llvm_unreachable("proxies should already have been unwrapped");
   }
@@ -3549,8 +3510,7 @@ bool is_base(const MetaFunctionEvalContext &EvalCtx) {
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
     return true;
 
-  return SetAndSucceed(*EvalCtx.Result,
-                       makeBool(*EvalCtx.C, RV.isReflectedBaseSpecifier()));
+  return SetBoolAndSucceed(EvalCtx, RV.isReflectedBaseSpecifier());
 }
 
 bool is_data_member_spec(const MetaFunctionEvalContext &EvalCtx) {
@@ -3561,8 +3521,7 @@ bool is_data_member_spec(const MetaFunctionEvalContext &EvalCtx) {
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
     return true;
 
-  return SetAndSucceed(*EvalCtx.Result,
-                       makeBool(*EvalCtx.C, RV.isReflectedDataMemberSpec()));
+  return SetBoolAndSucceed(EvalCtx, RV.isReflectedDataMemberSpec());
 }
 
 bool is_namespace(const MetaFunctionEvalContext &EvalCtx) {
@@ -3573,8 +3532,7 @@ bool is_namespace(const MetaFunctionEvalContext &EvalCtx) {
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
     return true;
 
-  return SetAndSucceed(*EvalCtx.Result,
-                       makeBool(*EvalCtx.C, RV.isReflectedNamespace()));
+  return SetBoolAndSucceed(EvalCtx, RV.isReflectedNamespace());
 }
 
 bool is_function(const MetaFunctionEvalContext &EvalCtx) {
@@ -3588,7 +3546,7 @@ bool is_function(const MetaFunctionEvalContext &EvalCtx) {
   bool result = false;
   if (RV.isReflectedDecl())
     result = isa<const FunctionDecl>(RV.getReflectedDecl());
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool is_variable(const MetaFunctionEvalContext &EvalCtx) {
@@ -3602,7 +3560,7 @@ bool is_variable(const MetaFunctionEvalContext &EvalCtx) {
   bool result = false;
   if (RV.isReflectedDecl())
     result = isa<const VarDecl>(RV.getReflectedDecl());
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool is_type(const MetaFunctionEvalContext &EvalCtx) {
@@ -3613,8 +3571,7 @@ bool is_type(const MetaFunctionEvalContext &EvalCtx) {
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
     return true;
 
-  return SetAndSucceed(*EvalCtx.Result,
-                       makeBool(*EvalCtx.C, RV.isReflectedType()));
+  return SetBoolAndSucceed(EvalCtx, RV.isReflectedType());
 }
 
 bool is_alias(const MetaFunctionEvalContext &EvalCtx) {
@@ -3628,16 +3585,16 @@ bool is_alias(const MetaFunctionEvalContext &EvalCtx) {
   switch (RV.getReflectionKind()) {
   case ReflectionKind::Type: {
     bool result = isTypeAlias(RV.getReflectedType());
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+    return SetBoolAndSucceed(EvalCtx, result);
   }
   case ReflectionKind::Namespace: {
     bool result = isa<NamespaceAliasDecl>(RV.getReflectedNamespace());
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+    return SetBoolAndSucceed(EvalCtx, result);
   }
   case ReflectionKind::Template: {
     TemplateDecl *TDecl = RV.getReflectedTemplate().getAsTemplateDecl();
     bool result = isa<TypeAliasTemplateDecl>(TDecl);
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+    return SetBoolAndSucceed(EvalCtx, result);
   }
   case ReflectionKind::Null:
   case ReflectionKind::Object:
@@ -3648,7 +3605,7 @@ bool is_alias(const MetaFunctionEvalContext &EvalCtx) {
   case ReflectionKind::Parameter:
   case ReflectionKind::Annotation:
   case ReflectionKind::EntityProxy:
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, false));
+    return SetBoolAndSucceed(EvalCtx, false);
   }
   llvm_unreachable("unknown reflection kind");
 }
@@ -3661,8 +3618,7 @@ bool is_entity_proxy(const MetaFunctionEvalContext &EvalCtx) {
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
     return true;
 
-  return SetAndSucceed(*EvalCtx.Result,
-                       makeBool(*EvalCtx.C, RV.isReflectedEntityProxy()));
+  return SetBoolAndSucceed(EvalCtx, RV.isReflectedEntityProxy());
 }
 
 bool is_complete_type(const MetaFunctionEvalContext &EvalCtx) {
@@ -3682,7 +3638,7 @@ bool is_complete_type(const MetaFunctionEvalContext &EvalCtx) {
 
     result = !RV.getReflectedType()->isIncompleteType();
   }
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool has_complete_definition(const MetaFunctionEvalContext &EvalCtx) {
@@ -3722,7 +3678,7 @@ bool has_complete_definition(const MetaFunctionEvalContext &EvalCtx) {
     llvm_unreachable("proxies should already have been unwrapped");
   }
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool is_enumerable_type(const MetaFunctionEvalContext &EvalCtx) {
@@ -3759,7 +3715,7 @@ bool is_enumerable_type(const MetaFunctionEvalContext &EvalCtx) {
     llvm_unreachable("proxies should already have been unwrapped");
   }
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool is_template(const MetaFunctionEvalContext &EvalCtx) {
@@ -3770,8 +3726,7 @@ bool is_template(const MetaFunctionEvalContext &EvalCtx) {
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
     return true;
 
-  return SetAndSucceed(*EvalCtx.Result,
-                       makeBool(*EvalCtx.C, RV.isReflectedTemplate()));
+  return SetBoolAndSucceed(EvalCtx, RV.isReflectedTemplate());
 }
 
 bool is_function_template(const MetaFunctionEvalContext &EvalCtx) {
@@ -3787,7 +3742,7 @@ bool is_function_template(const MetaFunctionEvalContext &EvalCtx) {
     const TemplateDecl *TD = RV.getReflectedTemplate().getAsTemplateDecl();
     IsFnTemplate = isa<FunctionTemplateDecl>(TD);
   }
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsFnTemplate));
+  return SetBoolAndSucceed(EvalCtx, IsFnTemplate);
 }
 
 bool is_variable_template(const MetaFunctionEvalContext &EvalCtx) {
@@ -3803,7 +3758,7 @@ bool is_variable_template(const MetaFunctionEvalContext &EvalCtx) {
     const TemplateDecl *TD = RV.getReflectedTemplate().getAsTemplateDecl();
     IsVarTemplate = isa<VarTemplateDecl>(TD);
   }
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsVarTemplate));
+  return SetBoolAndSucceed(EvalCtx, IsVarTemplate);
 }
 
 bool is_class_template(const MetaFunctionEvalContext &EvalCtx) {
@@ -3819,7 +3774,7 @@ bool is_class_template(const MetaFunctionEvalContext &EvalCtx) {
     const TemplateDecl *TD = RV.getReflectedTemplate().getAsTemplateDecl();
     IsClsTemplate = isa<ClassTemplateDecl>(TD);
   }
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsClsTemplate));
+  return SetBoolAndSucceed(EvalCtx, IsClsTemplate);
 }
 
 bool is_alias_template(const MetaFunctionEvalContext &EvalCtx) {
@@ -3835,7 +3790,7 @@ bool is_alias_template(const MetaFunctionEvalContext &EvalCtx) {
     const TemplateDecl *TD = RV.getReflectedTemplate().getAsTemplateDecl();
     IsAliasTemplate = TD->isTypeAlias();
   }
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsAliasTemplate));
+  return SetBoolAndSucceed(EvalCtx, IsAliasTemplate);
 }
 
 bool is_conversion_function_template(const MetaFunctionEvalContext &EvalCtx) {
@@ -3852,8 +3807,7 @@ bool is_conversion_function_template(const MetaFunctionEvalContext &EvalCtx) {
     if (auto *FTD = dyn_cast<FunctionTemplateDecl>(TD))
       IsConversionTemplate = isa<CXXConversionDecl>(FTD->getTemplatedDecl());
   }
-  return SetAndSucceed(*EvalCtx.Result,
-                       makeBool(*EvalCtx.C, IsConversionTemplate));
+  return SetBoolAndSucceed(EvalCtx, IsConversionTemplate);
 }
 
 bool is_operator_function_template(const MetaFunctionEvalContext &EvalCtx) {
@@ -3871,8 +3825,7 @@ bool is_operator_function_template(const MetaFunctionEvalContext &EvalCtx) {
       IsOperatorTemplate =
           (FTD->getTemplatedDecl()->getOverloadedOperator() != OO_None);
   }
-  return SetAndSucceed(*EvalCtx.Result,
-                       makeBool(*EvalCtx.C, IsOperatorTemplate));
+  return SetBoolAndSucceed(EvalCtx, IsOperatorTemplate);
 }
 
 bool is_literal_operator_template(const MetaFunctionEvalContext &EvalCtx) {
@@ -3890,8 +3843,7 @@ bool is_literal_operator_template(const MetaFunctionEvalContext &EvalCtx) {
       IsLiteralOperator = FTD->getDeclName().getNameKind() ==
                           DeclarationName::CXXLiteralOperatorName;
   }
-  return SetAndSucceed(*EvalCtx.Result,
-                       makeBool(*EvalCtx.C, IsLiteralOperator));
+  return SetBoolAndSucceed(EvalCtx, IsLiteralOperator);
 }
 
 bool is_constructor_template(const MetaFunctionEvalContext &EvalCtx) {
@@ -3908,7 +3860,7 @@ bool is_constructor_template(const MetaFunctionEvalContext &EvalCtx) {
     if (auto *FTD = dyn_cast<FunctionTemplateDecl>(TD))
       IsCtorTemplate = isa<CXXConstructorDecl>(FTD->getTemplatedDecl());
   }
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsCtorTemplate));
+  return SetBoolAndSucceed(EvalCtx, IsCtorTemplate);
 }
 
 bool is_concept(const MetaFunctionEvalContext &EvalCtx) {
@@ -3923,7 +3875,7 @@ bool is_concept(const MetaFunctionEvalContext &EvalCtx) {
   if (RV.isReflectedTemplate())
     IsConcept = isa<ConceptDecl>(RV.getReflectedTemplate().getAsTemplateDecl());
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsConcept));
+  return SetBoolAndSucceed(EvalCtx, IsConcept);
 }
 
 bool is_structured_binding(const MetaFunctionEvalContext &EvalCtx) {
@@ -3938,7 +3890,7 @@ bool is_structured_binding(const MetaFunctionEvalContext &EvalCtx) {
   if (RV.isReflectedDecl())
     result = isa<BindingDecl>(RV.getReflectedDecl());
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool is_value(const MetaFunctionEvalContext &EvalCtx) {
@@ -3949,8 +3901,7 @@ bool is_value(const MetaFunctionEvalContext &EvalCtx) {
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
     return true;
 
-  return SetAndSucceed(*EvalCtx.Result,
-                       makeBool(*EvalCtx.C, RV.isReflectedValue()));
+  return SetBoolAndSucceed(EvalCtx, RV.isReflectedValue());
 }
 
 bool is_object(const MetaFunctionEvalContext &EvalCtx) {
@@ -3965,7 +3916,7 @@ bool is_object(const MetaFunctionEvalContext &EvalCtx) {
   if (RV.isReflectedDecl())
     IsObject = isa<TemplateParamObjectDecl>(RV.getReflectedDecl());
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsObject));
+  return SetBoolAndSucceed(EvalCtx, IsObject);
 }
 
 bool has_template_arguments(const MetaFunctionEvalContext &EvalCtx) {
@@ -3980,7 +3931,7 @@ bool has_template_arguments(const MetaFunctionEvalContext &EvalCtx) {
   case ReflectionKind::Type: {
     QualType QT = RV.getReflectedType();
     bool result = isTemplateSpecialization(QT);
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+    return SetBoolAndSucceed(EvalCtx, result);
   }
   case ReflectionKind::Declaration: {
     bool result = false;
@@ -3991,7 +3942,7 @@ bool has_template_arguments(const MetaFunctionEvalContext &EvalCtx) {
     else if (auto *VTSD = dyn_cast<VarTemplateSpecializationDecl>(D))
       result = VTSD->getTemplateArgs().size() > 0;
 
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+    return SetBoolAndSucceed(EvalCtx, result);
   }
   case ReflectionKind::Null:
   case ReflectionKind::Object:
@@ -4003,7 +3954,7 @@ bool has_template_arguments(const MetaFunctionEvalContext &EvalCtx) {
   case ReflectionKind::Parameter:
   case ReflectionKind::DataMemberSpec:
   case ReflectionKind::Annotation:
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, false));
+    return SetBoolAndSucceed(EvalCtx, false);
   }
   llvm_unreachable("unknown reflection kind");
 }
@@ -4021,7 +3972,7 @@ bool has_default_member_initializer(const MetaFunctionEvalContext &EvalCtx) {
     if (auto *FD = dyn_cast<FieldDecl>(RV.getReflectedDecl()))
       HasInitializer = FD->hasInClassInitializer();
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, HasInitializer));
+  return SetBoolAndSucceed(EvalCtx, HasInitializer);
 }
 
 bool is_conversion_function(const MetaFunctionEvalContext &EvalCtx) {
@@ -4036,7 +3987,7 @@ bool is_conversion_function(const MetaFunctionEvalContext &EvalCtx) {
   if (RV.isReflectedDecl())
     IsConversion = isa<CXXConversionDecl>(RV.getReflectedDecl());
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsConversion));
+  return SetBoolAndSucceed(EvalCtx, IsConversion);
 }
 
 bool is_operator_function(const MetaFunctionEvalContext &EvalCtx) {
@@ -4052,7 +4003,7 @@ bool is_operator_function(const MetaFunctionEvalContext &EvalCtx) {
     if (auto *FD = dyn_cast<FunctionDecl>(RV.getReflectedDecl()))
       IsOperator = (FD->getOverloadedOperator() != OO_None);
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsOperator));
+  return SetBoolAndSucceed(EvalCtx, IsOperator);
 }
 
 bool is_literal_operator(const MetaFunctionEvalContext &EvalCtx) {
@@ -4069,8 +4020,7 @@ bool is_literal_operator(const MetaFunctionEvalContext &EvalCtx) {
       IsLiteralOperator = FD->getDeclName().getNameKind() ==
                           DeclarationName::CXXLiteralOperatorName;
 
-  return SetAndSucceed(*EvalCtx.Result,
-                       makeBool(*EvalCtx.C, IsLiteralOperator));
+  return SetBoolAndSucceed(EvalCtx, IsLiteralOperator);
 }
 
 bool is_constructor(const MetaFunctionEvalContext &EvalCtx) {
@@ -4092,10 +4042,10 @@ bool is_constructor(const MetaFunctionEvalContext &EvalCtx) {
   case ReflectionKind::Parameter:
   case ReflectionKind::DataMemberSpec:
   case ReflectionKind::Annotation:
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, false));
+    return SetBoolAndSucceed(EvalCtx, false);
   case ReflectionKind::Declaration: {
     bool result = isa<CXXConstructorDecl>(RV.getReflectedDecl());
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+    return SetBoolAndSucceed(EvalCtx, result);
   }
   case ReflectionKind::EntityProxy:
     llvm_unreachable("proxies should already have been unwrapped");
@@ -4116,7 +4066,7 @@ bool is_default_constructor(const MetaFunctionEvalContext &EvalCtx) {
     if (auto *CtorD = dyn_cast<CXXConstructorDecl>(RV.getReflectedDecl()))
       result = CtorD->isDefaultConstructor();
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool is_copy_constructor(const MetaFunctionEvalContext &EvalCtx) {
@@ -4132,7 +4082,7 @@ bool is_copy_constructor(const MetaFunctionEvalContext &EvalCtx) {
     if (auto *CtorD = dyn_cast<CXXConstructorDecl>(RV.getReflectedDecl()))
       result = CtorD->isCopyConstructor();
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool is_move_constructor(const MetaFunctionEvalContext &EvalCtx) {
@@ -4148,7 +4098,7 @@ bool is_move_constructor(const MetaFunctionEvalContext &EvalCtx) {
     if (auto *CtorD = dyn_cast<CXXConstructorDecl>(RV.getReflectedDecl()))
       result = CtorD->isMoveConstructor();
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool is_assignment(const MetaFunctionEvalContext &EvalCtx) {
@@ -4164,7 +4114,7 @@ bool is_assignment(const MetaFunctionEvalContext &EvalCtx) {
     if (auto *FD = dyn_cast<FunctionDecl>(RV.getReflectedDecl()))
       result = (FD->getOverloadedOperator() == OO_Equal);
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool is_copy_assignment(const MetaFunctionEvalContext &EvalCtx) {
@@ -4180,7 +4130,7 @@ bool is_copy_assignment(const MetaFunctionEvalContext &EvalCtx) {
     if (auto *MD = dyn_cast<CXXMethodDecl>(RV.getReflectedDecl()))
       result = MD->isCopyAssignmentOperator();
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool is_move_assignment(const MetaFunctionEvalContext &EvalCtx) {
@@ -4196,7 +4146,7 @@ bool is_move_assignment(const MetaFunctionEvalContext &EvalCtx) {
     if (auto *MD = dyn_cast<CXXMethodDecl>(RV.getReflectedDecl()))
       result = MD->isMoveAssignmentOperator();
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool is_destructor(const MetaFunctionEvalContext &EvalCtx) {
@@ -4218,10 +4168,10 @@ bool is_destructor(const MetaFunctionEvalContext &EvalCtx) {
   case ReflectionKind::Parameter:
   case ReflectionKind::DataMemberSpec:
   case ReflectionKind::Annotation:
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, false));
+    return SetBoolAndSucceed(EvalCtx, false);
   case ReflectionKind::Declaration: {
     bool result = isa<CXXDestructorDecl>(RV.getReflectedDecl());
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+    return SetBoolAndSucceed(EvalCtx, result);
   }
   case ReflectionKind::EntityProxy:
     llvm_unreachable("proxies should already have been unwrapped");
@@ -4247,20 +4197,20 @@ bool is_special_member_function(const MetaFunctionEvalContext &EvalCtx) {
   case ReflectionKind::Parameter:
   case ReflectionKind::DataMemberSpec:
   case ReflectionKind::Annotation:
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, false));
+    return SetBoolAndSucceed(EvalCtx, false);
   case ReflectionKind::Declaration: {
     bool IsSpecial = false;
     if (auto *FD = dyn_cast<FunctionDecl>(RV.getReflectedDecl()))
       IsSpecial = isSpecialMember(FD);
 
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsSpecial));
+    return SetBoolAndSucceed(EvalCtx, IsSpecial);
   }
   case ReflectionKind::Template: {
     bool result = false;
     TemplateDecl *TDecl = RV.getReflectedTemplate().getAsTemplateDecl();
     if (auto *FTD = dyn_cast<FunctionTemplateDecl>(TDecl))
       result = isSpecialMember(FTD->getTemplatedDecl());
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+    return SetBoolAndSucceed(EvalCtx, result);
   }
   case ReflectionKind::EntityProxy:
     llvm_unreachable("proxies should already have been unwrapped");
@@ -4284,7 +4234,7 @@ bool is_user_provided(const MetaFunctionEvalContext &EvalCtx) {
           !(FD->isImplicit() || FD->isDeleted() || FD->isDefaulted());
     }
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsUserProvided));
+  return SetBoolAndSucceed(EvalCtx, IsUserProvided);
 }
 
 bool is_user_declared(const MetaFunctionEvalContext &EvalCtx) {
@@ -4302,7 +4252,7 @@ bool is_user_declared(const MetaFunctionEvalContext &EvalCtx) {
       IsUserDeclared = !(FD->isImplicit());
     }
 
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsUserDeclared));
+  return SetBoolAndSucceed(EvalCtx, IsUserDeclared);
 }
 
 bool reflect_result(const MetaFunctionEvalContext &EvalCtx) {
@@ -4486,7 +4436,7 @@ bool data_member_spec(const MetaFunctionEvalContext &EvalCtx) {
 
   TagDataMemberSpec *TDMS = new (*EvalCtx.C)
       TagDataMemberSpec{MemberTy, Name, Alignment, BitWidth, NoUniqueAddress};
-  return SetAndSucceed(*EvalCtx.Result, makeReflection(TDMS));
+  return SetReflectionAndSucceed(EvalCtx, TDMS);
 }
 
 bool define_aggregate(const MetaFunctionEvalContext &EvalCtx) {
@@ -4550,7 +4500,7 @@ bool define_aggregate(const MetaFunctionEvalContext &EvalCtx) {
       /*unsigned PriorHash;
       if (EvalCtx.C->checkClassMemberSpecHash(ToComplete, PriorHash) &&
           MemberSpecHash == PriorHash)
-        return SetAndSucceed(*EvalCtx.Result, makeReflection(ToComplete));
+        return SetReflectionAndSucceed(EvalCtx, ToComplete);
       else*/
       return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
                                diag::metafn_already_complete_type)
@@ -4570,7 +4520,7 @@ bool define_aggregate(const MetaFunctionEvalContext &EvalCtx) {
     return true;
 
   EvalCtx.C->recordClassMemberSpecHash(ToComplete, MemberSpecHash);
-  return SetAndSucceed(*EvalCtx.Result, makeReflection(ToComplete));
+  return SetReflectionAndSucceed(EvalCtx, ToComplete);
 }
 
 bool offset_of(const MetaFunctionEvalContext &EvalCtx) {
@@ -4620,7 +4570,6 @@ bool offset_of(const MetaFunctionEvalContext &EvalCtx) {
   llvm_unreachable("unknown reflection kind");
 }
 
-// todo: Yukino: SetAndSucceed clean up
 bool size_of(const MetaFunctionEvalContext &EvalCtx) {
   assert(EvalCtx.Args[0]->getType()->isReflectionType());
   assert(EvalCtx.ResultTy == EvalCtx.C->getSizeType());
@@ -4628,6 +4577,12 @@ bool size_of(const MetaFunctionEvalContext &EvalCtx) {
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
     return true;
+
+  auto SetSizeAndSucceed = [&](auto Entity) {
+    size_t Sz = EvalCtx.C->getTypeSizeInChars(Entity).getQuantity();
+    return SetAndSucceed(*EvalCtx.Result, APValue(EvalCtx.C->MakeIntValue(
+                                              Sz, EvalCtx.C->getSizeType())));
+  };
 
   switch (RV.getReflectionKind()) {
   case ReflectionKind::Type: {
@@ -4642,28 +4597,20 @@ bool size_of(const MetaFunctionEvalContext &EvalCtx) {
                                diag::metafn_cannot_introspect_type)
              << 4 << 0 << EvalCtx.Range;
 
-    size_t Sz = EvalCtx.C->getTypeSizeInChars(QT).getQuantity();
-    return SetAndSucceed(*EvalCtx.Result, APValue(EvalCtx.C->MakeIntValue(
-                                              Sz, EvalCtx.C->getSizeType())));
+    return SetSizeAndSucceed(QT);
   }
   case ReflectionKind::Object:
   case ReflectionKind::Value: {
     QualType QT = RV.getTypeOfReflectedResult(*EvalCtx.C);
-    size_t Sz = EvalCtx.C->getTypeSizeInChars(QT).getQuantity();
-    return SetAndSucceed(*EvalCtx.Result, APValue(EvalCtx.C->MakeIntValue(
-                                              Sz, EvalCtx.C->getSizeType())));
+    return SetSizeAndSucceed(QT);
   }
   case ReflectionKind::Declaration: {
     ValueDecl *VD = RV.getReflectedDecl();
-    size_t Sz = EvalCtx.C->getTypeSizeInChars(VD->getType()).getQuantity();
-    return SetAndSucceed(*EvalCtx.Result, APValue(EvalCtx.C->MakeIntValue(
-                                              Sz, EvalCtx.C->getSizeType())));
+    return SetSizeAndSucceed(VD->getType());
   }
   case ReflectionKind::DataMemberSpec: {
     TagDataMemberSpec *TDMS = RV.getReflectedDataMemberSpec();
-    size_t Sz = EvalCtx.C->getTypeSizeInChars(TDMS->Ty).getQuantity();
-    return SetAndSucceed(*EvalCtx.Result, APValue(EvalCtx.C->MakeIntValue(
-                                              Sz, EvalCtx.C->getSizeType())));
+    return SetSizeAndSucceed(TDMS->Ty);
   }
   case ReflectionKind::Null:
   case ReflectionKind::Template:
@@ -4726,6 +4673,11 @@ bool bit_size_of(const MetaFunctionEvalContext &EvalCtx) {
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
     return true;
 
+  auto SetSizeAndSucceed = [&](size_t Sz) {
+    return SetAndSucceed(*EvalCtx.Result, APValue(EvalCtx.C->MakeIntValue(
+                                              Sz, EvalCtx.C->getSizeType())));
+  };
+
   switch (RV.getReflectionKind()) {
   case ReflectionKind::Type: {
     QualType QT = RV.getReflectedType();
@@ -4739,15 +4691,12 @@ bool bit_size_of(const MetaFunctionEvalContext &EvalCtx) {
                                diag::metafn_cannot_introspect_type)
              << 4 << 0 << EvalCtx.Range;
 
-    size_t Sz = EvalCtx.C->getTypeSize(QT);
-    return SetAndSucceed(*EvalCtx.Result, APValue(EvalCtx.C->MakeIntValue(
-                                              Sz, EvalCtx.C->getSizeType())));
+    return SetSizeAndSucceed(EvalCtx.C->getTypeSize(QT));
   }
   case ReflectionKind::Object:
   case ReflectionKind::Value: {
     size_t Sz = EvalCtx.C->getTypeSize(RV.getTypeOfReflectedResult(*EvalCtx.C));
-    return SetAndSucceed(*EvalCtx.Result, APValue(EvalCtx.C->MakeIntValue(
-                                              Sz, EvalCtx.C->getSizeType())));
+    return SetSizeAndSucceed(Sz);
   }
   case ReflectionKind::Declaration: {
     const ValueDecl *VD = cast<ValueDecl>(RV.getReflectedDecl());
@@ -4757,15 +4706,13 @@ bool bit_size_of(const MetaFunctionEvalContext &EvalCtx) {
       if (FD->isBitField())
         Sz = FD->getBitWidthValue();
 
-    return SetAndSucceed(*EvalCtx.Result, APValue(EvalCtx.C->MakeIntValue(
-                                              Sz, EvalCtx.C->getSizeType())));
+    return SetSizeAndSucceed(Sz);
   }
   case ReflectionKind::DataMemberSpec: {
     TagDataMemberSpec *TDMS = RV.getReflectedDataMemberSpec();
 
     size_t Sz = TDMS->BitWidth.value_or(EvalCtx.C->getTypeSize(TDMS->Ty));
-    return SetAndSucceed(*EvalCtx.Result, APValue(EvalCtx.C->MakeIntValue(
-                                              Sz, EvalCtx.C->getSizeType())));
+    return SetSizeAndSucceed(Sz);
   }
 
   case ReflectionKind::Null:
@@ -4886,8 +4833,7 @@ bool get_ith_parameter_of(const MetaFunctionEvalContext &EvalCtx) {
       if (idx >= numParams)
         return SetAndSucceed(*EvalCtx.Result, Sentinel);
 
-      return SetAndSucceed(*EvalCtx.Result,
-                           makeReflection(FT->getParamType(idx)));
+      return SetReflectionAndSucceed(EvalCtx, FT->getParamType(idx));
     }
     return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
                              diag::metafn_cannot_introspect_type)
@@ -4899,8 +4845,7 @@ bool get_ith_parameter_of(const MetaFunctionEvalContext &EvalCtx) {
       if (idx >= numParams)
         return SetAndSucceed(*EvalCtx.Result, Sentinel);
 
-      return SetAndSucceed(*EvalCtx.Result,
-                           makeReflection(FD->getParamDecl(idx)));
+      return SetReflectionAndSucceed(EvalCtx, FD->getParamDecl(idx));
     }
     // Template Parameters (Class/Var/Alias Templates reflected as Decls)
     if (TemplateDecl *TD = dyn_cast<TemplateDecl>(RV.getReflectedDecl())) {
@@ -4911,7 +4856,7 @@ bool get_ith_parameter_of(const MetaFunctionEvalContext &EvalCtx) {
       if (idx >= TPL->size())
         return SetAndSucceed(*EvalCtx.Result, Sentinel);
 
-      return SetAndSucceed(*EvalCtx.Result, makeReflection(TPL->getParam(idx)));
+      return SetReflectionAndSucceed(EvalCtx, TPL->getParam(idx));
     }
     return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
                              diag::metafn_cannot_query_property)
@@ -4919,7 +4864,7 @@ bool get_ith_parameter_of(const MetaFunctionEvalContext &EvalCtx) {
   }
   case ReflectionKind::Template: {
     if (!CheckYukinoExt())
-        return true;
+      return true;
 
     TemplateName TN = RV.getReflectedTemplate();
     // Convert the TemplateName to the underlying declaration
@@ -4942,7 +4887,7 @@ bool get_ith_parameter_of(const MetaFunctionEvalContext &EvalCtx) {
 
     // NamedDecl* here is the TemplateTypeParmDecl, NonTypeTemplateParmDecl,
     // etc.
-    return SetAndSucceed(*EvalCtx.Result, makeReflection(TPL->getParam(idx)));
+    return SetReflectionAndSucceed(EvalCtx, TPL->getParam(idx));
   }
   case ReflectionKind::Null:
   case ReflectionKind::Object:
@@ -4985,7 +4930,7 @@ bool has_ellipsis_parameter(const MetaFunctionEvalContext &EvalCtx) {
   case ReflectionKind::Type:
     if (auto *FPT = dyn_cast<FunctionProtoType>(RV.getReflectedType())) {
       bool HasEllipsis = FPT->isVariadic();
-      return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, HasEllipsis));
+      return SetBoolAndSucceed(EvalCtx, HasEllipsis);
     }
     return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
                              diag::metafn_cannot_introspect_type)
@@ -4993,7 +4938,7 @@ bool has_ellipsis_parameter(const MetaFunctionEvalContext &EvalCtx) {
   case ReflectionKind::Declaration: {
     if (auto *FD = dyn_cast<FunctionDecl>(RV.getReflectedDecl())) {
       bool HasEllipsis = FD->getEllipsisLoc().isValid();
-      return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, HasEllipsis));
+      return SetBoolAndSucceed(EvalCtx, HasEllipsis);
     }
     return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
                              diag::metafn_cannot_query_property)
@@ -5014,8 +4959,7 @@ bool has_default_argument(const MetaFunctionEvalContext &EvalCtx) {
   switch (RV.getReflectionKind()) {
   case ReflectionKind::Parameter: {
     ParmVarDecl *PVD = getMostRecentParmVarDecl(RV.getReflectedParameter());
-    return SetAndSucceed(*EvalCtx.Result,
-                         makeBool(*EvalCtx.C, PVD->hasDefaultArg()));
+    return SetBoolAndSucceed(EvalCtx, PVD->hasDefaultArg());
   }
   case ReflectionKind::Declaration:
   case ReflectionKind::Null:
@@ -5045,7 +4989,7 @@ bool is_explicit_object_parameter(const MetaFunctionEvalContext &EvalCtx) {
   bool result = false;
   if (RV.isReflectedParameter())
     result = RV.getReflectedParameter()->isExplicitObjectParameter();
-  return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, result));
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 bool is_function_parameter(const MetaFunctionEvalContext &EvalCtx) {
@@ -5056,8 +5000,7 @@ bool is_function_parameter(const MetaFunctionEvalContext &EvalCtx) {
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
     return true;
 
-  return SetAndSucceed(*EvalCtx.Result,
-                       makeBool(*EvalCtx.C, RV.isReflectedParameter()));
+  return SetBoolAndSucceed(EvalCtx, RV.isReflectedParameter());
 }
 
 bool return_type_of(const MetaFunctionEvalContext &EvalCtx) {
@@ -5073,7 +5016,7 @@ bool return_type_of(const MetaFunctionEvalContext &EvalCtx) {
     if (auto *FPT = dyn_cast<FunctionProtoType>(RV.getReflectedType())) {
       QualType QT = desugarType(FPT->getReturnType(), /*UnwrapAliases=*/true,
                                 /*DropCV=*/false, /*DropRefs=*/false);
-      return SetAndSucceed(*EvalCtx.Result, makeReflection(QT));
+      return SetReflectionAndSucceed(EvalCtx, QT);
     }
 
     return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
@@ -5085,7 +5028,7 @@ bool return_type_of(const MetaFunctionEvalContext &EvalCtx) {
         FD && !isa<CXXConstructorDecl>(FD) && !isa<CXXDestructorDecl>(FD)) {
       QualType QT = desugarType(FD->getReturnType(), /*UnwrapAliases=*/true,
                                 /*DropCV=*/false, /*DropRefs=*/false);
-      return SetAndSucceed(*EvalCtx.Result, makeReflection(QT));
+      return SetReflectionAndSucceed(EvalCtx, QT);
     }
     [[fallthrough]];
   case ReflectionKind::Null:
@@ -5214,8 +5157,7 @@ bool is_annotation(const MetaFunctionEvalContext &EvalCtx) {
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
     return true;
 
-  return SetAndSucceed(*EvalCtx.Result,
-                       makeBool(*EvalCtx.C, RV.isReflectedAnnotation()));
+  return SetBoolAndSucceed(EvalCtx, RV.isReflectedAnnotation());
 }
 
 bool annotate(const MetaFunctionEvalContext &EvalCtx) {
@@ -5242,7 +5184,7 @@ bool annotate(const MetaFunctionEvalContext &EvalCtx) {
     if (auto *Annot = EvalCtx.Meta->Annotate(D->getMostRecentDecl(), Value,
                                              EvalCtx.ContainingDecl,
                                              EvalCtx.Range.getBegin()))
-      return SetAndSucceed(*EvalCtx.Result, makeReflection(Annot));
+      return SetReflectionAndSucceed(EvalCtx, Annot);
     return true;
   }
   case ReflectionKind::Declaration: {
@@ -5253,7 +5195,7 @@ bool annotate(const MetaFunctionEvalContext &EvalCtx) {
     if (auto *Annot = EvalCtx.Meta->Annotate(D->getMostRecentDecl(), Value,
                                              EvalCtx.ContainingDecl,
                                              EvalCtx.Range.getBegin()))
-      return SetAndSucceed(*EvalCtx.Result, makeReflection(Annot));
+      return SetReflectionAndSucceed(EvalCtx, Annot);
     return true;
   }
   case ReflectionKind::Namespace: {
@@ -5261,7 +5203,7 @@ bool annotate(const MetaFunctionEvalContext &EvalCtx) {
     if (auto *Annot = EvalCtx.Meta->Annotate(D->getMostRecentDecl(), Value,
                                              EvalCtx.ContainingDecl,
                                              EvalCtx.Range.getBegin()))
-      return SetAndSucceed(*EvalCtx.Result, makeReflection(Annot));
+      return SetReflectionAndSucceed(EvalCtx, Annot);
     return true;
   }
   case ReflectionKind::Null:
@@ -5298,9 +5240,8 @@ bool current_access_context(const MetaFunctionEvalContext &EvalCtx) {
 
   // todo [merge:yukino:maybe-revert]
   if (auto *RD = dyn_cast<CXXRecordDecl>(Ctx))
-    return SetAndSucceed(*EvalCtx.Result,
-                         makeReflection(QualType(getTypeForDecl(RD), 0)));
-  return SetAndSucceed(*EvalCtx.Result, makeReflection(Ctx));
+    return SetReflectionAndSucceed(EvalCtx, QualType(getTypeForDecl(RD), 0));
+  return SetReflectionAndSucceed(EvalCtx, Ctx);
 }
 
 bool is_accessible(const MetaFunctionEvalContext &EvalCtx) {
@@ -5375,45 +5316,45 @@ bool is_accessible(const MetaFunctionEvalContext &EvalCtx) {
     if (validate(D, NamingCls))
       return true;
     else if (!NamingCls)
-      return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, true));
+      return SetBoolAndSucceed(EvalCtx, true);
 
     bool Accessible = UnconditionalAccess ||
                       EvalCtx.Meta->IsAccessible(D, AccessDC, NamingCls);
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, Accessible));
+    return SetBoolAndSucceed(EvalCtx, Accessible);
   }
   case ReflectionKind::Declaration: {
     ValueDecl *D = RV.getReflectedDecl();
     if (validate(D, NamingCls))
       return true;
     else if (!NamingCls)
-      return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, true));
+      return SetBoolAndSucceed(EvalCtx, true);
 
     bool Accessible =
         UnconditionalAccess ||
         EvalCtx.Meta->IsAccessible(RV.getReflectedDecl(), AccessDC, NamingCls);
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, Accessible));
+    return SetBoolAndSucceed(EvalCtx, Accessible);
   }
   case ReflectionKind::Template: {
     TemplateDecl *D = RV.getReflectedTemplate().getAsTemplateDecl();
     if (validate(D, NamingCls))
       return true;
     else if (!NamingCls)
-      return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, true));
+      return SetBoolAndSucceed(EvalCtx, true);
 
     bool Accessible = UnconditionalAccess ||
                       EvalCtx.Meta->IsAccessible(D, AccessDC, NamingCls);
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, Accessible));
+    return SetBoolAndSucceed(EvalCtx, Accessible);
   }
   case ReflectionKind::EntityProxy: {
     UsingShadowDecl *USD = RV.getReflectedEntityProxy();
     if (validate(USD, NamingCls))
       return true;
     else if (!NamingCls)
-      return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, true));
+      return SetBoolAndSucceed(EvalCtx, true);
 
     bool Accessible = UnconditionalAccess ||
                       EvalCtx.Meta->IsAccessible(USD, AccessDC, NamingCls);
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, Accessible));
+    return SetBoolAndSucceed(EvalCtx, Accessible);
   }
   case ReflectionKind::BaseSpecifier: {
     CXXBaseSpecifier *BaseSpec = RV.getReflectedBaseSpecifier();
@@ -5440,7 +5381,7 @@ bool is_accessible(const MetaFunctionEvalContext &EvalCtx) {
         UnconditionalAccess ||
         EvalCtx.Meta->IsAccessibleBase(BaseTy, DerivedTy, path, AccessDC,
                                        EvalCtx.Range.getBegin());
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, Accessible));
+    return SetBoolAndSucceed(EvalCtx, Accessible);
   }
   case ReflectionKind::Null:
   case ReflectionKind::Object:
@@ -5449,7 +5390,7 @@ bool is_accessible(const MetaFunctionEvalContext &EvalCtx) {
   case ReflectionKind::Parameter:
   case ReflectionKind::DataMemberSpec:
   case ReflectionKind::Annotation:
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, true));
+    return SetBoolAndSucceed(EvalCtx, true);
   }
   llvm_unreachable("invalid reflection type");
 }
@@ -5478,28 +5419,28 @@ bool is_access_specified(const MetaFunctionEvalContext &EvalCtx) {
     if (Decl *D = findTypeDecl(RV.getReflectedType()))
       IsSpecified = findAccessSpec(D) != AS_none;
 
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsSpecified));
+    return SetBoolAndSucceed(EvalCtx, IsSpecified);
   }
   case ReflectionKind::Declaration: {
     bool IsSpecified = findAccessSpec(RV.getReflectedDecl()) != AS_none;
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsSpecified));
+    return SetBoolAndSucceed(EvalCtx, IsSpecified);
   }
   case ReflectionKind::Template: {
     Decl *D = RV.getReflectedTemplate().getAsTemplateDecl();
 
     bool IsSpecified = findAccessSpec(D) != AS_none;
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsSpecified));
+    return SetBoolAndSucceed(EvalCtx, IsSpecified);
   }
   case ReflectionKind::EntityProxy: {
     Decl *D = RV.getReflectedEntityProxy()->getIntroducer();
 
     bool IsSpecified = findAccessSpec(D) != AS_none;
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsSpecified));
+    return SetBoolAndSucceed(EvalCtx, IsSpecified);
   }
   case ReflectionKind::BaseSpecifier: {
     CXXBaseSpecifier *Base = RV.getReflectedBaseSpecifier();
     bool IsSpecified = (Base->getAccessSpecifierAsWritten() != AS_none);
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, IsSpecified));
+    return SetBoolAndSucceed(EvalCtx, IsSpecified);
   }
   case ReflectionKind::Null:
   case ReflectionKind::Object:
@@ -5508,7 +5449,7 @@ bool is_access_specified(const MetaFunctionEvalContext &EvalCtx) {
   case ReflectionKind::Parameter:
   case ReflectionKind::DataMemberSpec:
   case ReflectionKind::Annotation:
-    return SetAndSucceed(*EvalCtx.Result, makeBool(*EvalCtx.C, false));
+    return SetBoolAndSucceed(EvalCtx, false);
   }
   llvm_unreachable("invalid reflection type");
 }
@@ -5876,5 +5817,24 @@ bool reflect_invoke(const MetaFunctionEvalContext &EvalCtx) {
   return SetAndSucceed(*EvalCtx.Result,
                        EvalResult.Val.Lift(CallExpr->getType()));
 }
+} // namespace
+
+// -----------------------------------------------------------------------------
+// class Metafunction implementation
+// -----------------------------------------------------------------------------
+
+#pragma region MetaFunction Call Relay Helpers
+bool MetaFunction::evaluate(const MetaFunctionEvalContext &EvalCtx) const {
+  return ImplFn(EvalCtx);
+}
+
+bool MetaFunction::Lookup(MetaFunctionID ID, const MetaFunction *&result) {
+  if (llvm::to_underlying(ID) >= NumMetafunctions)
+    return true;
+
+  result = &Metafunctions[llvm::to_underlying(ID)];
+  return result->ImplFn == nullptr;
+}
+#pragma endregion
 
 } // end namespace clang

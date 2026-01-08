@@ -26,16 +26,16 @@ namespace clang {
 
 class APValue;
 
-class Metafunction {
+class MetaFunction {
 public:
   // Enumerators identifying the return-type of a metafunction.
-  enum ResultKind : std::uint8_t {
-    MFRK_bool,
-    MFRK_metaInfo,
-    MFRK_sizeT,
-    MFRK_sourceLoc,
-    MFRK_spliceFromArg,
-    MFRK_maxNum, // sentinel
+  enum class ResultKind : std::uint8_t {
+    Bool,
+    MetaInfo,
+    Size,
+    SourceLoc,
+    SpliceFromArg,
+    MaxNum, // sentinel
   };
 
 private:
@@ -50,7 +50,7 @@ private:
   MetaFunctionID ID;
 
 public:
-  constexpr Metafunction(ResultKind ResultKind, std::uint8_t MinArgs,
+  constexpr MetaFunction(ResultKind ResultKind, std::uint8_t MinArgs,
                          std::uint8_t MaxArgs, MetaFunctionID ID,
                          impl_fn_t ImplFn)
       : ImplFn(ImplFn), Kind(ResultKind), MinArgs(MinArgs), MaxArgs(MaxArgs),
@@ -64,11 +64,11 @@ public:
 
   // Get a pointer to the metafunction with the given ID.
   // Returns true in the case of error (i.e., no such metafunction exists).
-  static bool Lookup(MetaFunctionID ID, const Metafunction *&result);
+  static bool Lookup(MetaFunctionID ID, const MetaFunction *&result);
 };
 
 // Make it compact.
-static_assert(sizeof(Metafunction) == 2 * sizeof(void *));
+static_assert(sizeof(MetaFunction) == 2 * sizeof(void *));
 
 } // namespace clang
 
