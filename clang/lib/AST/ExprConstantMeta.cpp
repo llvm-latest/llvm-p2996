@@ -1176,6 +1176,39 @@ bool DiagnoseReflectionKind(DiagFn Diagnoser, SourceRange Range,
 
   return true;
 }
+
+void CheckReflectionArg(const MetaFunctionEvalContext &EvalCtx, size_t I) {
+  if (!EvalCtx.Args[I]->getType()->isReflectionType())
+    llvm_unreachable("argument supposed to be a reflection");
+}
+
+void CheckReflectionArrayArg(const MetaFunctionEvalContext &EvalCtx, size_t I) {
+  if (!EvalCtx.Args[I]
+           ->getType()
+           ->getPointeeOrArrayElementType()
+           ->isReflectionType())
+    llvm_unreachable("argument supposed to be an array of reflections");
+}
+
+void CheckIntegralArg(const MetaFunctionEvalContext &EvalCtx, size_t I) {
+  if (!EvalCtx.Args[I]->getType()->isIntegerType())
+    llvm_unreachable("argument supposed to be an integer");
+}
+
+void CheckResultTyIsMetaInfo(const MetaFunctionEvalContext &EvalCtx) {
+  if (EvalCtx.ResultTy != EvalCtx.C->MetaInfoTy)
+    llvm_unreachable("this metafunction should return a reflection");
+}
+
+void CheckResultTyIsBool(const MetaFunctionEvalContext &EvalCtx) {
+  if (EvalCtx.ResultTy != EvalCtx.C->BoolTy)
+    llvm_unreachable("this metafunction should return a boolean value");
+}
+
+void CheckResultTyIsSizeT(const MetaFunctionEvalContext &EvalCtx) {
+  if (EvalCtx.ResultTy != EvalCtx.C->getSizeType())
+    llvm_unreachable("this metafunction should return a size_t");
+}
 #pragma endregion
 
 // -----------------------------------------------------------------------------
@@ -1192,8 +1225,8 @@ bool DiagnoseReflectionKind(DiagFn Diagnoser, SourceRange Range,
 
 #pragma region Metafunctions for Enumerables
 bool get_begin_enumerator_decl_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == C.MetaInfoTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsMetaInfo(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -1237,8 +1270,8 @@ bool get_begin_enumerator_decl_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool get_next_enumerator_decl_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->MetaInfoTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsMetaInfo(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -1275,8 +1308,8 @@ bool get_next_enumerator_decl_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool get_ith_base_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->MetaInfoTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsMetaInfo(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -1337,8 +1370,8 @@ bool get_ith_base_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool get_ith_template_argument_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->MetaInfoTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsMetaInfo(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -1400,15 +1433,15 @@ bool get_ith_template_argument_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool get_begin_member_decl_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.ResultTy == C.MetaInfoTy);
-
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
+  CheckResultTyIsMetaInfo(EvalCtx);
+  
+  CheckReflectionArg(EvalCtx, 0);
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true)) {
     return true;
   }
 
-  assert(EvalCtx.Args[1]->getType()->isReflectionType());
+  CheckReflectionArg(EvalCtx, 1);
   APValue Sentinel;
   if (!EvalCtx.Evaluator(Sentinel, EvalCtx.Args[1], true))
     return true;
@@ -1489,13 +1522,13 @@ bool get_begin_member_decl_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool get_next_member_decl_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.ResultTy == EvalCtx.C->MetaInfoTy);
+  CheckResultTyIsMetaInfo(EvalCtx);
+  CheckReflectionArg(EvalCtx, 0);
 
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
     return true;
-  assert(EvalCtx.Args[1]->getType()->isReflectionType());
+  CheckReflectionArg(EvalCtx, 1);
 
   APValue Sentinel;
   if (!EvalCtx.Evaluator(Sentinel, EvalCtx.Args[1], true))
@@ -1509,8 +1542,8 @@ bool get_next_member_decl_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_structural_type(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -1534,8 +1567,8 @@ bool is_structural_type(const MetaFunctionEvalContext &EvalCtx) {
 #pragma endregion
 
 bool map_decl_to_entity(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.ResultTy == EvalCtx.C->MetaInfoTy);
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
+  CheckResultTyIsMetaInfo(EvalCtx);
+  CheckReflectionArg(EvalCtx, 0);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -1550,7 +1583,7 @@ bool map_decl_to_entity(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool identifier_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
+  CheckReflectionArg(EvalCtx, 0);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[1], true))
@@ -1704,7 +1737,7 @@ bool identifier_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool has_identifier(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
+  CheckReflectionArg(EvalCtx, 0);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -1784,8 +1817,8 @@ bool has_identifier(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool operator_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.EvalCtx.ResultTy == EvalCtx.C->getSizeType());
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsSizeT(EvalCtx);
 
   static constexpr OverloadedOperatorKind OperatorIndices[] = {
       OO_None,          OO_New,
@@ -1852,7 +1885,7 @@ bool operator_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool source_location_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
+  CheckReflectionArg(EvalCtx, 0);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -1887,7 +1920,7 @@ bool source_location_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool type_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
+  CheckReflectionArg(EvalCtx, 0);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -1955,7 +1988,7 @@ bool type_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool parent_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
+  CheckReflectionArg(EvalCtx, 0);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -2026,8 +2059,8 @@ bool parent_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool underlying_entity_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->MetaInfoTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsMetaInfo(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -2063,8 +2096,8 @@ bool underlying_entity_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool proxied_entity_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->MetaInfoTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsMetaInfo(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -2091,8 +2124,8 @@ bool proxied_entity_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool object_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->MetaInfoTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsMetaInfo(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -2143,8 +2176,8 @@ bool object_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool constant_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->MetaInfoTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsMetaInfo(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -2264,8 +2297,8 @@ bool constant_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool template_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->MetaInfoTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsMetaInfo(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -2383,12 +2416,9 @@ TemplateArgument TArgFromReflection(const MetaFunctionEvalContext &EvalCtx,
 }
 
 bool substitute(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.Args[1]
-             ->getType()
-             ->getPointeeOrArrayElementType()
-             ->isReflectionType());
-  assert(EvalCtx.Args[2]->getType()->isIntegerType());
+  CheckReflectionArg(EvalCtx, 0);
+  CheckReflectionArrayArg(EvalCtx, 1);
+  CheckIntegralArg(EvalCtx, 2);
 
   APValue Template;
   if (!EvalCtx.Evaluator(Template, EvalCtx.Args[0], true))
@@ -2555,8 +2585,8 @@ bool substitute(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool extract(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.Args[1]->getType()->isReflectionType());
+  CheckReflectionArg(EvalCtx, 0);
+  CheckReflectionArg(EvalCtx, 1);
 
   bool ReturnsLValue = false;
   QualType RawResultTy = EvalCtx.ResultTy;
@@ -2823,8 +2853,8 @@ bool extract(const MetaFunctionEvalContext &EvalCtx) {
 
 template <AccessSpecifier Specifier>
 bool is_ACCESS(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C.BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -2900,8 +2930,8 @@ bool is_private(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_virtual(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -2934,8 +2964,8 @@ bool is_virtual(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_pure_virtual(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -2950,8 +2980,8 @@ bool is_pure_virtual(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_override(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -2966,8 +2996,8 @@ bool is_override(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_deleted(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -2982,8 +3012,8 @@ bool is_deleted(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_defaulted(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -2998,8 +3028,8 @@ bool is_defaulted(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_explicit(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3017,8 +3047,8 @@ bool is_explicit(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_noexcept(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3039,8 +3069,8 @@ bool is_noexcept(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_bit_field(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3059,8 +3089,8 @@ bool is_bit_field(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_enumerator(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3074,8 +3104,8 @@ bool is_enumerator(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_final(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3098,10 +3128,9 @@ bool is_final(const MetaFunctionEvalContext &EvalCtx) {
   return SetBoolAndSucceed(EvalCtx, result);
 }
 
-// todo: Yukino: SetAndSucceed clean up
 bool is_const(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3135,8 +3164,8 @@ bool is_const(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_volatile(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3173,8 +3202,8 @@ bool is_volatile(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_mutable_member(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3189,8 +3218,8 @@ bool is_mutable_member(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_lvalue_reference_qualified(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3209,8 +3238,8 @@ bool is_lvalue_reference_qualified(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_rvalue_reference_qualified(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3229,8 +3258,8 @@ bool is_rvalue_reference_qualified(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool has_static_storage_duration(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3249,8 +3278,8 @@ bool has_static_storage_duration(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool has_thread_storage_duration(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3265,8 +3294,8 @@ bool has_thread_storage_duration(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool has_automatic_storage_duration(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3281,8 +3310,8 @@ bool has_automatic_storage_duration(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool has_internal_linkage(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3307,8 +3336,8 @@ bool has_internal_linkage(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool has_module_linkage(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3333,8 +3362,8 @@ bool has_module_linkage(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool has_external_linkage(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3362,8 +3391,8 @@ bool has_external_linkage(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool has_linkage(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3388,8 +3417,8 @@ bool has_linkage(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_class_member(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
   // APValue Scratch;
   bool result = false;
 
@@ -3413,8 +3442,8 @@ bool is_class_member(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_namespace_member(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   // APValue Scratch;
   bool result = false;
@@ -3430,8 +3459,8 @@ bool is_namespace_member(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_nonstatic_data_member(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3449,8 +3478,8 @@ bool is_nonstatic_data_member(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_static_member(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3494,8 +3523,8 @@ bool is_static_member(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_base(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3505,8 +3534,8 @@ bool is_base(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_data_member_spec(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3516,8 +3545,8 @@ bool is_data_member_spec(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_namespace(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3527,8 +3556,8 @@ bool is_namespace(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_function(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3541,8 +3570,8 @@ bool is_function(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_variable(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3555,8 +3584,8 @@ bool is_variable(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_type(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3566,8 +3595,8 @@ bool is_type(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_alias(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3602,8 +3631,8 @@ bool is_alias(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_entity_proxy(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3613,8 +3642,8 @@ bool is_entity_proxy(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_complete_type(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3633,8 +3662,8 @@ bool is_complete_type(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool has_complete_definition(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3673,8 +3702,8 @@ bool has_complete_definition(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_enumerable_type(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3710,8 +3739,8 @@ bool is_enumerable_type(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_template(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3721,8 +3750,8 @@ bool is_template(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_function_template(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3737,8 +3766,8 @@ bool is_function_template(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_variable_template(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3753,8 +3782,8 @@ bool is_variable_template(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_class_template(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3769,8 +3798,8 @@ bool is_class_template(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_alias_template(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3785,8 +3814,8 @@ bool is_alias_template(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_conversion_function_template(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3802,8 +3831,8 @@ bool is_conversion_function_template(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_operator_function_template(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3820,8 +3849,8 @@ bool is_operator_function_template(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_literal_operator_template(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3838,8 +3867,8 @@ bool is_literal_operator_template(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_constructor_template(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3855,8 +3884,8 @@ bool is_constructor_template(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_concept(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3870,8 +3899,8 @@ bool is_concept(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_structured_binding(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3885,8 +3914,8 @@ bool is_structured_binding(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_value(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3896,8 +3925,8 @@ bool is_value(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_object(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3911,8 +3940,8 @@ bool is_object(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool has_template_arguments(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3951,8 +3980,8 @@ bool has_template_arguments(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool has_default_member_initializer(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3967,8 +3996,8 @@ bool has_default_member_initializer(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_conversion_function(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3982,8 +4011,8 @@ bool is_conversion_function(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_operator_function(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -3998,8 +4027,8 @@ bool is_operator_function(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_literal_operator(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -4015,8 +4044,8 @@ bool is_literal_operator(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_constructor(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -4045,8 +4074,8 @@ bool is_constructor(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_default_constructor(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -4061,8 +4090,8 @@ bool is_default_constructor(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_copy_constructor(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -4077,8 +4106,8 @@ bool is_copy_constructor(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_move_constructor(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -4093,8 +4122,8 @@ bool is_move_constructor(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_assignment(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -4109,8 +4138,8 @@ bool is_assignment(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_copy_assignment(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -4125,8 +4154,8 @@ bool is_copy_assignment(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_move_assignment(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -4141,8 +4170,8 @@ bool is_move_assignment(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_destructor(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -4171,8 +4200,8 @@ bool is_destructor(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_special_member_function(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -4210,8 +4239,8 @@ bool is_special_member_function(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_user_provided(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -4229,8 +4258,8 @@ bool is_user_provided(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_user_declared(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -4247,7 +4276,7 @@ bool is_user_declared(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool reflect_result(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
+  CheckReflectionArg(EvalCtx, 0);
 
   APValue ArgTy;
   if (!EvalCtx.Evaluator(ArgTy, EvalCtx.Args[0], true))
@@ -4322,7 +4351,7 @@ bool reflect_result(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool data_member_spec(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
+  CheckReflectionArg(EvalCtx, 0);
 
   APValue Scratch;
   size_t ArgIdx = 0;
@@ -4431,7 +4460,7 @@ bool data_member_spec(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool define_aggregate(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
+  CheckReflectionArg(EvalCtx, 0);
 
   APValue Scratch;
   if (!EvalCtx.Evaluator(Scratch, EvalCtx.Args[0], true))
@@ -4515,7 +4544,7 @@ bool define_aggregate(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool offset_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
+  CheckReflectionArg(EvalCtx, 0);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[1], true))
@@ -4562,8 +4591,8 @@ bool offset_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool size_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->getSizeType());
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsSizeT(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -4618,7 +4647,7 @@ bool size_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool bit_offset_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
+  CheckReflectionArg(EvalCtx, 0);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[1], true))
@@ -4657,8 +4686,8 @@ bool bit_offset_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool bit_size_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->getSizeType());
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsSizeT(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -4721,8 +4750,8 @@ bool bit_size_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool alignment_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->getSizeType());
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsSizeT(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -4789,8 +4818,8 @@ bool alignment_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool get_ith_parameter_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->MetaInfoTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsMetaInfo(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -4805,17 +4834,6 @@ bool get_ith_parameter_of(const MetaFunctionEvalContext &EvalCtx) {
   if (!EvalCtx.Evaluator(Idx, EvalCtx.Args[2], true))
     return true;
   size_t idx = Idx.getInt().getExtValue();
-
-  // Helper lambda to check the flag
-  auto CheckYukinoExt = [&]() -> bool {
-    if (!EvalCtx.C->getLangOpts().YukinoTemplateReflection) {
-      EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
-                        diag::warn_yukino_extensions_required)
-          << "-fext-yukino-template-reflection";
-      return false;
-    }
-    return true;
-  };
 
   switch (RV.getReflectionKind()) {
   case ReflectionKind::Type: {
@@ -4840,8 +4858,10 @@ bool get_ith_parameter_of(const MetaFunctionEvalContext &EvalCtx) {
     }
     // Template Parameters (Class/Var/Alias Templates reflected as Decls)
     if (TemplateDecl *TD = dyn_cast<TemplateDecl>(RV.getReflectedDecl())) {
-      if (!CheckYukinoExt())
-        return true; // Error emitted by helper
+      if (!CheckYukinoExtension(
+              EvalCtx, EvalCtx.C->getLangOpts().YukinoTemplateReflection,
+              ReflExtName_YukinoTemplate))
+        return true;
 
       TemplateParameterList *TPL = TD->getTemplateParameters();
       if (idx >= TPL->size())
@@ -4854,7 +4874,9 @@ bool get_ith_parameter_of(const MetaFunctionEvalContext &EvalCtx) {
            << 5 << DescriptionOf(RV) << EvalCtx.Range;
   }
   case ReflectionKind::Template: {
-    if (!CheckYukinoExt())
+    if (!CheckYukinoExtension(EvalCtx,
+                              EvalCtx.C->getLangOpts().YukinoTemplateReflection,
+                              ReflExtName_YukinoTemplate))
       return true;
 
     TemplateName TN = RV.getReflectedTemplate();
@@ -4897,8 +4919,8 @@ bool get_ith_parameter_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool has_ellipsis_parameter(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -4940,8 +4962,8 @@ bool has_ellipsis_parameter(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool has_default_argument(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -4970,8 +4992,8 @@ bool has_default_argument(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_explicit_object_parameter(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -4984,8 +5006,8 @@ bool is_explicit_object_parameter(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_function_parameter(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -4995,8 +5017,8 @@ bool is_function_parameter(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool return_type_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->MetaInfoTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsMetaInfo(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -5040,8 +5062,8 @@ bool return_type_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool variable_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->MetaInfoTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsMetaInfo(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -5064,8 +5086,8 @@ bool variable_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool get_ith_annotation_of(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->MetaInfoTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsMetaInfo(EvalCtx);
 
   auto findAnnotation = [&](Decl *D, size_t idx, APValue Sentinel) {
     D = D ? D->getMostRecentDecl() : D;
@@ -5141,8 +5163,8 @@ bool get_ith_annotation_of(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_annotation(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
@@ -5152,9 +5174,9 @@ bool is_annotation(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool annotate(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.Args[1]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->MetaInfoTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckReflectionArg(EvalCtx, 1);
+  CheckResultTyIsMetaInfo(EvalCtx);
 
   APValue Appertainee;
   if (!EvalCtx.Evaluator(Appertainee, EvalCtx.Args[0], true))
@@ -5214,7 +5236,7 @@ bool annotate(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool current_access_context(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.ResultTy == EvalCtx.C->MetaInfoTy);
+  CheckResultTyIsMetaInfo(EvalCtx);
   Decl *Ctx = nullptr;
 
   StackLocationExpr *SLE =
@@ -5236,10 +5258,10 @@ bool current_access_context(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_accessible(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.Args[1]->getType()->isReflectionType());
-  assert(EvalCtx.Args[2]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckReflectionArg(EvalCtx, 1);
+  CheckReflectionArg(EvalCtx, 2);
+  CheckResultTyIsBool(EvalCtx);
 
   APValue Scratch;
   if (!EvalCtx.Evaluator(Scratch, EvalCtx.Args[1], true) ||
@@ -5387,8 +5409,8 @@ bool is_accessible(const MetaFunctionEvalContext &EvalCtx) {
 }
 
 bool is_access_specified(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.ResultTy == EvalCtx.C->BoolTy);
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
 
   auto findAccessSpec = [](Decl *D) -> AccessSpecifier {
     DeclContext *DC = D->getDeclContext();
@@ -5504,17 +5526,11 @@ CXXMethodDecl *getCXXMethodDeclFromDeclRefExpr(DeclRefExpr *DRE,
 }
 
 bool reflect_invoke(const MetaFunctionEvalContext &EvalCtx) {
-  assert(EvalCtx.Args[0]->getType()->isReflectionType());
-  assert(EvalCtx.Args[1]
-             ->getType()
-             ->getPointeeOrArrayElementType()
-             ->isReflectionType());
-  assert(EvalCtx.Args[2]->getType()->isIntegerType());
-  assert(EvalCtx.Args[3]
-             ->getType()
-             ->getPointeeOrArrayElementType()
-             ->isReflectionType());
-  assert(EvalCtx.Args[4]->getType()->isIntegerType());
+  CheckReflectionArg(EvalCtx, 0);
+  CheckReflectionArrayArg(EvalCtx, 1);
+  CheckIntegralArg(EvalCtx, 2);
+  CheckReflectionArrayArg(EvalCtx, 3);
+  CheckIntegralArg(EvalCtx, 4);
 
   using ReflectionVector = SmallVector<APValue, 4>;
   auto UnpackReflectionsIntoVector = [&](ReflectionVector &Out, Expr *DataExpr,
