@@ -827,7 +827,7 @@ Parser::DeclGroupPtrTy Parser::ParseUsingDeclaration(
         << FixItHint::CreateInsertionFromRange(
                Tok.getLocation(), CharSourceRange::getTokenRange(Range))
         << FixItHint::CreateRemoval(Range);
-    Attrs.takeAllFrom(MisplacedAttrs);
+    Attrs.takeAllPrependingFrom(MisplacedAttrs);
   }
 
   // Maybe this is an alias-declaration.
@@ -875,7 +875,7 @@ Parser::DeclGroupPtrTy Parser::ParseUsingDeclaration(
     // Parse (optional) attributes.
     MaybeParseAttributes(PAKM_GNU | PAKM_CXX11, Attrs);
     DiagnoseCXX11AttributeExtension(Attrs);
-    Attrs.addAll(PrefixAttrs.begin(), PrefixAttrs.end());
+    Attrs.prepend(PrefixAttrs.begin(), PrefixAttrs.end());
 
     if (InvalidDeclarator)
       SkipUntil(tok::comma, tok::semi, StopBeforeMatch);
@@ -2072,7 +2072,7 @@ void Parser::ParseClassSpecifier(tok::TokenKind TagTokKind,
 
       // Recover by adding misplaced attributes to the attribute list
       // of the class so they can be applied on the class later.
-      attrs.takeAllFrom(Attributes);
+      attrs.takeAllAppendingFrom(Attributes);
     }
   }
 
@@ -2974,7 +2974,7 @@ Parser::DeclGroupPtrTy Parser::ParseCXXClassMemberDeclaration(
   // decl-specifier-seq:
   // Parse the common declaration-specifiers piece.
   ParsingDeclSpec DS(*this, TemplateDiags);
-  DS.takeAttributesFrom(DeclSpecAttrs);
+  DS.takeAttributesAppendingingFrom(DeclSpecAttrs);
 
   if (MalformedTypeSpec)
     DS.SetTypeSpecError();

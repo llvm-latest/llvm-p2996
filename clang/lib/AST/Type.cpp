@@ -4523,14 +4523,6 @@ IdentifierInfo *TemplateTypeParmType::getIdentifier() const {
   return isCanonicalUnqualified() ? nullptr : getDecl()->getIdentifier();
 }
 
-static const TemplateTypeParmDecl *getReplacedParameter(Decl *D,
-                                                        unsigned Index) {
-  if (const auto *TTP = dyn_cast<TemplateTypeParmDecl>(D))
-    return TTP;
-  return cast<TemplateTypeParmDecl>(
-      getReplacedTemplateParameterList(D)->getParam(Index));
-}
-
 SubstTemplateTypeParmType::SubstTemplateTypeParmType(QualType Replacement,
                                                      Decl *AssociatedDecl,
                                                      unsigned Index,
@@ -4553,7 +4545,8 @@ SubstTemplateTypeParmType::SubstTemplateTypeParmType(QualType Replacement,
 
 const TemplateTypeParmDecl *
 SubstTemplateTypeParmType::getReplacedParameter() const {
-  return ::getReplacedParameter(getAssociatedDecl(), getIndex());
+  return cast<TemplateTypeParmDecl>(std::get<0>(
+      getReplacedTemplateParameter(getAssociatedDecl(), getIndex())));
 }
 
 void SubstTemplateTypeParmType::Profile(llvm::FoldingSetNodeID &ID,
@@ -4620,7 +4613,8 @@ bool SubstTemplateTypeParmPackType::getFinal() const {
 
 const TemplateTypeParmDecl *
 SubstTemplateTypeParmPackType::getReplacedParameter() const {
-  return ::getReplacedParameter(getAssociatedDecl(), getIndex());
+  return cast<TemplateTypeParmDecl>(std::get<0>(
+      getReplacedTemplateParameter(getAssociatedDecl(), getIndex())));
 }
 
 IdentifierInfo *SubstTemplateTypeParmPackType::getIdentifier() const {

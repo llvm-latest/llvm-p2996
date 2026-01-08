@@ -14644,7 +14644,7 @@ StmtResult Sema::ActOnCXXForRangeIdentifier(Scope *S, SourceLocation IdentLoc,
 
   Declarator D(DS, ParsedAttributesView::none(), DeclaratorContext::ForInit);
   D.SetIdentifier(Ident, IdentLoc);
-  D.takeAttributes(Attrs);
+  D.takeAttributesAppending(Attrs);
 
   D.AddTypeInfo(DeclaratorChunk::getReference(0, IdentLoc, /*lvalue*/ false),
                 IdentLoc);
@@ -20814,7 +20814,7 @@ Sema::FunctionEmissionStatus Sema::getEmissionStatus(const FunctionDecl *FD,
 
   // SYCL functions can be template, so we check if they have appropriate
   // attribute prior to checking if it is a template.
-  if (LangOpts.SYCLIsDevice && FD->hasAttr<DeviceKernelAttr>())
+  if (LangOpts.SYCLIsDevice && FD->hasAttr<SYCLKernelAttr>())
     return FunctionEmissionStatus::Emitted;
 
   // Templates are emitted when they're instantiated.
