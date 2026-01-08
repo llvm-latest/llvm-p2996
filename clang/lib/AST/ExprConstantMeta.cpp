@@ -706,8 +706,9 @@ bool getTemplateArgumentsFromType(QualType QT,
   // Obtain the template arguments from the Type* representation
   if (auto asTmplSpecialization = QT->getAs<TemplateSpecializationType>())
     expandTemplateArgPacks(asTmplSpecialization->template_arguments(), Out);
-  else if (auto DTST = QT->getAs<DependentTemplateSpecializationType>())
-    expandTemplateArgPacks(DTST->template_arguments(), Out);
+  // todo [merge:yukino:maybe-revert]
+  // else if (auto DTST = QT->getAs<TemplateSpecializationType>())
+    // expandTemplateArgPacks(DTST->template_arguments(), Out);
   else if (auto *CTSD = dyn_cast_or_null<ClassTemplateSpecializationDecl>(
                QT->getAsRecordDecl()))
     expandTemplateArgPacks(CTSD->getTemplateArgs().asArray(), Out);
@@ -792,7 +793,8 @@ static bool isTemplateSpecialization(QualType QT) {
     return false;
 
   return isa<TemplateSpecializationType>(QT) ||
-         isa<DependentTemplateSpecializationType>(QT) ||
+         // todo [merge:yukino:maybe-revert]
+         // isa<DependentTemplateSpecializationType>(QT) ||
          isa_and_nonnull<ClassTemplateSpecializationDecl>(
              QT->getAsCXXRecordDecl());
 }

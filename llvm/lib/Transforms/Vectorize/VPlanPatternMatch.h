@@ -149,11 +149,19 @@ struct is_zero_int {
   bool isValue(const APInt &C) const { return C.isZero(); }
 };
 
+struct is_one {
+  bool isValue(const APInt &C) const { return C.isOne(); }
+};
+
 /// Match an integer 0 or a vector with all elements equal to 0.
 /// For vectors, this includes constants with undefined elements.
 inline int_pred_ty<is_zero_int> m_ZeroInt() {
   return int_pred_ty<is_zero_int>();
 }
+
+/// Match an integer 1 or a vector with all elements equal to 1.
+/// For vectors, this includes constants with undefined elements.
+inline int_pred_ty<is_one> m_One() { return int_pred_ty<is_one>(); }
 
 /// Matching combinators
 template <typename LTy, typename RTy> struct match_combine_or {
@@ -326,10 +334,10 @@ m_ExtractLastElement(const Op0_t &Op0) {
   return m_VPInstruction<VPInstruction::ExtractLastElement>(Op0);
 }
 
-template <typename Op0_t, typename Op1_t>
-inline VPInstruction_match<VPInstruction::ActiveLaneMask, Op0_t, Op1_t>
-m_ActiveLaneMask(const Op0_t &Op0, const Op1_t &Op1) {
-  return m_VPInstruction<VPInstruction::ActiveLaneMask>(Op0, Op1);
+template <typename Op0_t, typename Op1_t, typename Op2_t>
+inline VPInstruction_match<VPInstruction::ActiveLaneMask, Op0_t, Op1_t, Op2_t>
+m_ActiveLaneMask(const Op0_t &Op0, const Op1_t &Op1, const Op2_t &Op2) {
+  return m_VPInstruction<VPInstruction::ActiveLaneMask>(Op0, Op1, Op2);
 }
 
 template <typename Op0_t, typename Op1_t>
