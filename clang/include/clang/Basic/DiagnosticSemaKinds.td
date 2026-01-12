@@ -3268,10 +3268,10 @@ def err_splice_intervening_lambda : Error<
   "cannot splice local entity %0 for which there is an intervening lambda "
   "expression">;
 
-// Yukino's extensions
-def warn_yukino_extensions_required : Warning<
-  "reflection of this entity requires the experimental flag '%0'">,
-  InGroup<DiagGroup<"ext-yukino">>, DefaultIgnore;
+// Usagi extensions
+def warn_usagi_extensions_required : Warning<
+  "reflection of this entity requires enabling an extension with flag '%0'">,
+  InGroup<DiagGroup<"ext-usagi">>, DefaultIgnore;
 
 def err_metafunction_empty_args : Error<
   "__metafunction requires arguments">;

@@ -3719,10 +3719,10 @@ defm reflection_latest : BoolFOption<"reflection-latest",
           "Enable all reflection features supported by Clang/P2996">,
   NegFlag<SetFalse>>;
 
-defm ext_yukino_template_reflection : BoolFOption<"ext-yukino-template-reflection",
-  LangOpts<"YukinoTemplateReflection">, DefaultFalse,
+defm ext_usagi_template_reflection : BoolFOption<"ext-usagi-template-reflection",
+  LangOpts<"UsagiTemplateReflection">, DefaultFalse,
   PosFlag<SetTrue, [], [ClangOption, CC1Option],
-          "Enable Yukino's template parameter reflection extension">,
+          "Enable template reflection extension">,
   NegFlag<SetFalse>>;
 
 defm sized_deallocation : BoolFOption<"sized-deallocation",
