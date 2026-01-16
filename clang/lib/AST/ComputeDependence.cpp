@@ -552,7 +552,6 @@ ExprDependence clang::computeDependence(DeclRefExpr *E, const ASTContext &Ctx) {
   return Deps;
 }
 
-// todo [merge:yukino,"move into anonymous namespace"]
 static ExprDependence computeDeclDependence(ValueDecl *Decl,
                                             const ASTContext &Ctx) {
   auto Deps = ExprDependence::None;
@@ -1014,6 +1013,44 @@ ExprDependence clang::computeDependence(CXXReflectExpr *E,
     return ExprDependence::None;
   case ReflectionKind::EntityProxy:
     llvm_unreachable("should already have been unwrapped");
+#pragma region usagi-ext
+  case ReflectionKind::TemplateParameter: {
+    [[maybe_unused]]
+    Decl *RTP = RV.getReflectedTemplateParameter();
+
+    // The reflection of a template parameter declaration (e.g., ^^T, ^^N)
+    // is a Constant Handle to the AST node (a Decl*). It differs fundamentally
+    // from the usage of that parameter:
+    //
+    // 1. Not Value/Instantiation Dependent:
+    //    If we mark this as value-dependent, Clang's Sema cannot evaluate it
+    //    during template argument checking (which requires constant values for
+    //    NTTPs). Instead of evaluating, Sema leaves them as expressions.
+    //    This causes mismatches in generic types (e.g., FixedArray), where
+    //    an evaluated constant is expected. Thus, we must not call
+    //    D |= computeDeclDependence() here.
+    //
+    // 2. No Unexpanded Packs:
+    //    Even if T is a pack, ^^T is a scalar value representing the pack
+    //    declaration itself. It does not participate in pack expansion.
+
+    if ([[maybe_unused]] auto *TTP = dyn_cast<TemplateTypeParmDecl>(RTP)) {
+      // Intentionally no-op: TTP reflection is not dependent.
+    } else if (auto *NTTP = dyn_cast<NonTypeTemplateParmDecl>(RTP)) {
+      if (NTTP->getType().isNull()) {
+        llvm_unreachable("NTTP has no type. Invalid AST?");
+      }
+      // Intentionally no-op:
+      // Even if NTTP->getType() is dependent or contains an unexpanded pack,
+      // the reflection ^^N remains a constant handle to the declaration.
+    } else if ([[maybe_unused]] auto *TTP2 =
+                   dyn_cast<TemplateTemplateParmDecl>(RTP)) {
+      // Intentionally no-op.
+    }
+
+    return ExprDependence::None;
+  }
+#pragma endregion
   }
   llvm_unreachable("unknown reflection kind while computing dependence");
 }

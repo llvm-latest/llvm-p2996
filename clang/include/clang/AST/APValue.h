@@ -329,7 +329,7 @@ private:
   DataType Data;
 
   // A reflection can represent a value, but is also -itself- a value.
-  // 
+  //
   // When 'ReflectionDepth' is nonzero 'N', the APValue represents the otherwise
   // described value with N "layers of reflection" over it. The otherwise
   // equivalent APValue for which ReflectionDepth is zero is referred to as the
@@ -579,6 +579,12 @@ public:
   bool isReflectedAnnotation() const {
     return isReflection() && getReflectionKind() == ReflectionKind::Annotation;
   }
+#pragma region usagi-ext
+  bool isReflectedTemplateParameter() const {
+    return isReflection() &&
+           getReflectionKind() == ReflectionKind::TemplateParameter;
+  }
+#pragma endregion
 
   void dump() const;
   void dump(raw_ostream &OS, const ASTContext &Context) const;
@@ -771,6 +777,10 @@ public:
   CXXBaseSpecifier *getReflectedBaseSpecifier() const;
   TagDataMemberSpec *getReflectedDataMemberSpec() const;
   CXX26AnnotationAttr *getReflectedAnnotation() const;
+
+#pragma region usagi-ext
+  Decl *getReflectedTemplateParameter() const;
+#pragma endregion
 
   void setInt(APSInt I) {
     assert(isInt() && "Invalid accessor");

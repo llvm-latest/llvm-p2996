@@ -5008,6 +5008,42 @@ void CXXNameMangler::mangleReflection(const APValue &R) {
     mangleExpression(R.getReflectedAnnotation()->getArg());
     break;
   }
+#pragma region usagi-ext
+  case ReflectionKind::TemplateParameter: {
+    Decl *D = R.getReflectedTemplateParameter();
+    assert(D);
+    if (auto *ND = dyn_cast<NamedDecl>(D)) {
+      // Usagi Ext: Template Parameter
+      // Encoding: "tp" <Parent-Template-Encoding> <Index> "_"
+      Out << "tp";
+
+      const DeclContext *DC = ND->getDeclContext();
+
+      // Map DeclContext to a NamedDecl we can mangle
+      const NamedDecl *Parent = dyn_cast<NamedDecl>(DC);
+      if (!Parent) {
+        // Try to handle contexts that aren't NamedDecls directly but wrap them
+        // (Though usually TemplateParams are inside ClassTemplate/FunctionDecl
+        // etc) Fallback to anonymous
+        Out << "0";
+      } else {
+        mangleName(Parent);
+      }
+
+      unsigned Index = 0;
+      if (auto *TTP = dyn_cast<TemplateTypeParmDecl>(ND))
+        Index = TTP->getIndex();
+      else if (auto *NTTP = dyn_cast<NonTypeTemplateParmDecl>(ND))
+        Index = NTTP->getIndex();
+      else if (auto *TTP = dyn_cast<TemplateTemplateParmDecl>(ND))
+        Index = TTP->getIndex();
+
+      mangleNumber(Index);
+      Out << '_';
+    }
+    break;
+  }
+#pragma endregion
   }
   Out << 'E';
 }

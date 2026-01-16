@@ -112,6 +112,13 @@ enum class ReflectionKind {
 
   /// \brief A reflection of an annotation (P2996 ext).
   Annotation,
+
+#pragma region usagi-ext
+  /// \brief A reflection of a template parameter. Usagi Extension.
+  ///
+  /// Corresponds to a Decl.
+  TemplateParameter,
+#pragma endregion
 };
 
 

@@ -142,7 +142,16 @@ enum class MetaFunctionID : std::uint8_t {
   is_access_specified = 131,
   reflect_invoke = 132,
 
-  sentinel = 133,
+  // Yukino's own metafunctions
+  // template_parameters_of = 141,
+  get_ith_template_parameters_of = 141,
+  is_type_template_parameter = 142,
+  is_non_type_template_parameter = 143,
+  is_template_template_parameter = 144,
+  is_template_parameter_pack = 145,
+  type_constraint_of = 146,
+
+  sentinel,
 };
 
 class APValue;

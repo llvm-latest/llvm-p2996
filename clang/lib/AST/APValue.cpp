@@ -520,7 +520,7 @@ static void profileReflection(llvm::FoldingSetNodeID &ID, APValue V) {
     QualType QT = V.getReflectedType();
     QT.getQualifiers().Profile(ID);
 
-    if (auto *TST = dyn_cast<TemplateSpecializationType>(QT)) {
+    if ([[maybe_unused]] auto *TST = dyn_cast<TemplateSpecializationType>(QT)) {
       // Note: This sugar only kept for alias template specializations.
       ID.AddInteger(Type::TemplateSpecialization);
       QT.getCanonicalType().Profile(ID);
@@ -582,6 +582,17 @@ static void profileReflection(llvm::FoldingSetNodeID &ID, APValue V) {
   case ReflectionKind::Object:
   case ReflectionKind::Value:
     llvm_unreachable("lowered value should never represent a value or object");
+#pragma region usagi-ext
+  case ReflectionKind::TemplateParameter: {
+    // We cannot reliably canonicalize via getDeclContext() because
+    // TemplateDecls are not DeclContexts. We rely on the pointer identity. If
+    // the user obtained this reflection via canonical means (e.g.
+    // parameters_of), it will be canonical.
+    Decl *D = V.getReflectedTemplateParameter();
+    ID.AddPointer(D->getCanonicalDecl());
+    return;
+  }
+#pragma endregion
   }
   llvm_unreachable("unknown reflection kind");
 }
@@ -794,7 +805,6 @@ ReflectionKind APValue::getReflectionKind() const {
           if (const auto *D = E.getAsBaseOrMember().getPointer()) {
             if (auto *FD = dyn_cast<FieldDecl>(D))
               LVTy = FD->getType()->getCanonicalTypeUnqualified().getTypePtr();
-            // todo [merge:yukino:maybe-revert]
             else if (auto *TD = dyn_cast<CXXRecordDecl>(D))
               LVTy = TD->getASTContext()
                          .getCanonicalTagType(TD)
@@ -973,6 +983,15 @@ CXX26AnnotationAttr *APValue::getReflectedAnnotation() const {
   return reinterpret_cast<CXX26AnnotationAttr *>(
           const_cast<void *>(getOpaqueReflectionData()));
 }
+
+#pragma region usagi-ext
+Decl *APValue::getReflectedTemplateParameter() const {
+  assert(getReflectionKind() == ReflectionKind::TemplateParameter &&
+         "not a reflection of a template parameter");
+  return reinterpret_cast<Decl *>(
+      const_cast<void *>(getOpaqueReflectionData()));
+}
+#pragma endregion
 
 static double GetApproxValue(const llvm::APFloat &F) {
   llvm::APFloat V = F;
@@ -1295,46 +1314,127 @@ void APValue::printPretty(raw_ostream &Out, const PrintingPolicy &Policy,
     Out << "&&" << getAddrLabelDiffRHS()->getLabel()->getName();
     return;
   case APValue::Reflection:
+    Out << "^^(";
     std::string Repr("unknown-reflection");
     switch (getReflectionKind()) {
     case ReflectionKind::Null:
-      Repr = "null";
+      Out << "null";
       break;
-    case ReflectionKind::Type:
-      Repr = "type";
-      break;
-    case ReflectionKind::Object:
-      Repr = "object";
-      break;
-    case ReflectionKind::Value:
-      Repr = "value";
-      break;
-    case ReflectionKind::Declaration:
-      Repr = "declaration";
-      break;
-    case ReflectionKind::Template:
-      Repr = "template";
-      break;
-    case ReflectionKind::Namespace:
-      Repr = "namespace";
-      break;
-    case ReflectionKind::EntityProxy:
-      Repr = "entity-proxy";
-      break;
-    case ReflectionKind::Parameter:
-      Repr = "parameter";
-      break;
-    case ReflectionKind::BaseSpecifier:
-      Repr = "base-specifier";
-      break;
-    case ReflectionKind::DataMemberSpec:
-      Repr = "data-member-spec";
-      break;
-    case ReflectionKind::Annotation:
-      Repr = "annotation";
+    case ReflectionKind::Type: {
+      Out << "type:'";
+      getReflectedType().print(Out, Policy);
+      Out << "'";
       break;
     }
-    Out << "^^(" << Repr << ")";
+    case ReflectionKind::Declaration:
+      Out << "declaration:";
+      if (const auto *ND = dyn_cast<NamedDecl>(getReflectedDecl())) {
+        Out << "'";
+        ND->printName(Out);
+        Out << "'";
+      } else
+        Out << "<unnamed>";
+      break;
+    case ReflectionKind::Template:
+      getReflectedTemplate().print(Out, Policy);
+      break;
+    case ReflectionKind::Namespace:
+      Out << "namespace:";
+      if (const auto *ND = dyn_cast<NamedDecl>(getReflectedNamespace())) {
+        Out << "'";
+        ND->printName(Out);
+        Out << "'";
+      } else
+        Out << "<global>";
+      break;
+    case ReflectionKind::EntityProxy:
+      Out << "proxy:";
+      if (const auto *ND = dyn_cast<NamedDecl>(getReflectedEntityProxy())) {
+        Out << "'";
+        ND->printName(Out);
+        Out << "'";
+      } else
+        Out << "<unknown>";
+      break;
+    case ReflectionKind::Parameter:
+      // Function Parameters
+      Out << "function-parameter:";
+      if (const auto *ND = dyn_cast<NamedDecl>(getReflectedParameter())) {
+        Out << "'";
+        ND->printName(Out);
+        Out << "'";
+      } else
+        Out << "<unnamed>";
+      break;
+    case ReflectionKind::BaseSpecifier: {
+      Out << "base-specifier:'";
+      getReflectedBaseSpecifier()->getType().print(Out, Policy);
+      Out << "'";
+      break;
+    }
+    case ReflectionKind::DataMemberSpec:
+      Out << "data-member-spec:";
+      if (auto Name = getReflectedDataMemberSpec()->Name) {
+        Out << "'";
+        Out << *Name;
+        Out << "'";
+      } else
+        Out << "<unnamed>";
+      break;
+    case ReflectionKind::Annotation:
+      Out << "annotation";
+      break;
+    case ReflectionKind::Object: {
+      // 1. Lower the reflection to get the actual LValue APValue.
+      APValue Obj = getReflectedObject();
+      // 2. Compute the type of the LValue using the path helper.
+      QualType T = ComputeLValueType(Obj);
+      Out << "object:";
+      // 3. If we successfully computed a type, print pretty.
+      if (!T.isNull()) {
+        // If it's a reference, we might want the referee type,
+        // but printPretty handles the value representation.
+        // We assume T is the type of the object being referred to.
+        Obj.printPretty(Out, Policy, T, Ctx);
+      } else {
+        Out << "<unknown-type>";
+      }
+      break;
+    }
+    case ReflectionKind::Value: {
+      Out << "value:";
+      // 1. Lower the reflection to get the actual RValue APValue.
+      APValue Val = getReflectedValue();
+      // 2. Use the stored UnderlyingTy from the reflection wrapper.
+      //    The comment confirms: "necessary to store the type of the underlying
+      //    value". This supplies the missing Type info needed for printPretty.
+      if (!UnderlyingTy.isNull()) {
+        Val.printPretty(Out, Policy, UnderlyingTy, Ctx);
+      } else {
+        // Fallback for cases where UnderlyingTy might be missing (shouldn't
+        // happen for valid reflections)
+        Val.printPretty(
+            Out, Policy,
+            Val.getKind() == APValue::Int ? Ctx->IntTy : Ctx->VoidTy, Ctx);
+      }
+      break;
+    }
+#pragma region usagi-ext
+    case ReflectionKind::TemplateParameter: {
+      Out << "template-parameter:";
+      // Ext: Print the name of the template parameter (e.g. "T", "N")
+      if (const auto *ND =
+              dyn_cast<NamedDecl>(getReflectedTemplateParameter())) {
+        Out << "'";
+        ND->printName(Out);
+        Out << "'";
+      } else
+        Out << "<unnamed>";
+      break;
+    }
+#pragma endregion
+    }
+    Out << ")";
     return;
   }
   llvm_unreachable("Unknown APValue kind!");
@@ -1613,10 +1713,9 @@ static QualType unwrapReflectedType(QualType QT) {
 
     if (const auto *LIT = dyn_cast<LocInfoType>(QT))
       QT = LIT->getType();
-    // todo [merge:yukino:maybe-revert]
     // `ElaboratedType` has been removed and `DependentNameType` is always
     // dependent so we do nothing here.
-    if (const auto *DNT = dyn_cast<DependentNameType>(QT)) {
+    if ([[maybe_unused]] const auto *DNT = dyn_cast<DependentNameType>(QT)) {
       // no-op
     }
     if (const auto *STTPT = dyn_cast<SubstTemplateTypeParmType>(QT);
@@ -1672,6 +1771,9 @@ void APValue::setReflection(ReflectionKind RK, const void *Ptr) {
   case ReflectionKind::BaseSpecifier:
   case ReflectionKind::DataMemberSpec:
   case ReflectionKind::Annotation:
+#pragma region usagi-ext
+  case ReflectionKind::TemplateParameter:
+#pragma endregion
     SelfData.Kind = RK;
     SelfData.Data = Ptr;
     return;

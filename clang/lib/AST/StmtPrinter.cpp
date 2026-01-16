@@ -2770,8 +2770,9 @@ void StmtPrinter::VisitCoyieldExpr(CoyieldExpr *S) {
 }
 
 void StmtPrinter::VisitCXXReflectExpr(CXXReflectExpr *S) {
-  // FIXME: Make this better.
-  OS << "^^(...)";
+  // Delegate to APValue's pretty printer to handle all reflection kinds
+  // (e.g. ^^int, ^^MyClass, ^^some_var)
+  S->getReflection().printPretty(OS, Policy, S->getType(), Context);
 }
 
 void StmtPrinter::VisitCXXMetafunctionExpr(CXXMetafunctionExpr *S) {

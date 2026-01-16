@@ -2395,6 +2395,43 @@ void MicrosoftCXXNameMangler::mangleReflection(const APValue &R) {
     mangleExpression(R.getReflectedAnnotation()->getArg(), nullptr);
     break;
   }
+
+#pragma region usagi-ext
+  case ReflectionKind::TemplateParameter: {
+    Decl *D = R.getReflectedTemplateParameter();
+    assert(D);
+    if (const auto *ND = dyn_cast<NamedDecl>(D)) {
+      // Encoding: 'q' <Parent-Mangled-Name> <Index> '@'
+      // We use 'q' to distinct from 'p' (function param) and 'd' (decl)
+      Out << 'q';
+
+      const DeclContext *DC = ND->getDeclContext();
+      const NamedDecl *Parent = dyn_cast<NamedDecl>(DC);
+
+      if (Parent) {
+        mangleName(Parent);
+      } else {
+        // todo: is this correct?
+        Out << "0"; // Anonymous/Unknown parent
+      }
+
+      unsigned Index = 0;
+      if (auto *TTP = dyn_cast<TemplateTypeParmDecl>(ND))
+        Index = TTP->getIndex();
+      else if (auto *NTTP = dyn_cast<NonTypeTemplateParmDecl>(ND))
+        Index = NTTP->getIndex();
+      else if (auto *TTP = dyn_cast<TemplateTemplateParmDecl>(ND))
+        Index = TTP->getIndex();
+
+      mangleNumber(Index);
+      Out << '@';
+    }
+    else {
+      Error("Template parameter not a NamedDecl?");
+    }
+    break;
+  }
+#pragma endregion
   } // switch
   Out << 'E';
 }

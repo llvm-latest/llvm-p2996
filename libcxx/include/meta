@@ -411,7 +411,7 @@ template <reflection_range R1 = initializer_list<info>,
 #include <variant>
 #include <vector>
 
-#if __has_feature(reflection)
+#if __has_feature(reflection) || __RESHARPER__
 
 _LIBCPP_BEGIN_NAMESPACE_REFLECTION_V2
 
@@ -550,6 +550,17 @@ enum : unsigned {
   // Other bespoke functions (not proposed at this time)
   __metafn_is_access_specified = 131,
   __metafn_reflect_invoke = 132,
+
+  // Usagi extensions
+  // __usagi_metafn_template_parameters_of = 141,
+  __usagi_metafn_get_ith_template_parameters_of = 141,
+  __usagi_metafn_is_type_template_parameter = 142,
+  __usagi_metafn_is_non_type_template_parameter = 143,
+  __usagi_metafn_is_template_template_parameter = 144,
+  __usagi_metafn_is_template_parameter_pack = 145,
+  __usagi_metafn_type_constraint_of = 146,
+
+  sentinel,
 };
 
 consteval auto __workaround_expand_compiler_builtins(info type) -> info;
@@ -733,7 +744,7 @@ constexpr struct front_enumerator_of_fn {
   }
 } front_enumerator;
 
-#if __has_feature(parameter_reflection)
+#if __has_feature(parameter_reflection) || __RESHARPER__
 
 struct next_parameter_of_fn {
   consteval info operator()(auto /* currItrInfo */, info reflectedEntity,
@@ -776,14 +787,14 @@ struct front_annotation_of {
 // -----------------------------------------------------------------------------
 
 // Returns a reflection of the canonical type for the reflected type.
-#if __has_feature(entity_proxy_reflection)
+#if __has_feature(entity_proxy_reflection) || __RESHARPER__
 [[deprecated("renamed to 'underlying_entity_of' in PXYZ")]]
 #endif
 consteval auto dealias(info r) -> info {
   return __metafunction(detail::__metafn_underlying_entity_of, r);
 }
 
-#if __has_feature(entity_proxy_reflection)
+#if __has_feature(entity_proxy_reflection) || __RESHARPER__
 consteval auto underlying_entity_of(info r) -> info {
   return __metafunction(detail::__metafn_underlying_entity_of, r);
 }
@@ -1978,7 +1989,7 @@ consteval auto __workaround_expand_compiler_builtins(info type) -> info {
 
 }  // namespace detail
 
-#if __has_feature(parameter_reflection)
+#if __has_feature(parameter_reflection) || __RESHARPER__
 
 consteval auto parameters_of(info r) -> vector<info> {
   using iterator =
@@ -2016,7 +2027,7 @@ consteval auto variable_of(info r) -> info {
 
 #endif  // __has_feature(parameter_reflection)
 
-#if __has_feature(annotation_attributes)
+#if __has_feature(annotation_attributes) || __RESHARPER__
 
 consteval auto annotations_of(info r) -> vector<info> {
   using iterator =
@@ -2344,6 +2355,7 @@ consteval auto reflect_constant_array(R &&elems) -> info {
   vector Args = {^^ValTy};
   for (const auto &V : elems)
     Args.push_back(reflect_constant(V));
+    //Args.push_back(V);
   return Args.size() == 1 ? substitute(^^__define_static::EmptyArray, Args) :
                             substitute(^^__define_static::FixedArray, Args);
 }
@@ -2363,6 +2375,59 @@ consteval auto reflect_constant_string(std::u8string_view In) -> info {
   Args.push_back(reflect_constant(char8_t{}));
   return substitute(^^__define_static::FixedArray, Args);
 }
+
+#if __has_feature(ext_usagi_reflect_templates) || __RESHARPER__
+
+namespace __range_of_infos {
+
+struct next_template_parameter_of_fn {
+  consteval info operator()(auto /* currItrInfo */, info reflectedEntity,
+                            size_t idx) const {
+    return __metafunction(detail::__usagi_metafn_get_ith_template_parameters_of,
+                          reflectedEntity, ^^sentinel, idx);
+  }
+} next_template_parameter;
+
+struct front_template_parameter_of_fn {
+  consteval info operator()(info reflectedEntity) const {
+    return __metafunction(detail::__usagi_metafn_get_ith_template_parameters_of,
+                          reflectedEntity, ^^sentinel, 0);
+  }
+} front_template_parameter;
+
+} // namespace __range_of_infos
+
+consteval auto template_parameters_of(info r) -> vector<info> {
+  using iterator =
+    __range_of_infos::iterator<__range_of_infos::front_template_parameter_of_fn,
+                                __range_of_infos::next_template_parameter_of_fn,
+                                __range_of_infos::map_identity_fn>;
+  using range = __range_of_infos::range<iterator>;
+  auto rng = range{r};
+  return vector<info>{rng.begin(), rng.end()};
+}
+
+consteval auto is_type_template_parameter(info r) -> bool {
+  return __metafunction(detail::__usagi_metafn_is_type_template_parameter, r);
+}
+
+consteval auto is_non_type_template_parameter(info r) -> bool {
+  return __metafunction(detail::__usagi_metafn_is_non_type_template_parameter, r);
+}
+
+consteval auto is_template_template_parameter(info r) -> bool {
+  return __metafunction(detail::__usagi_metafn_is_template_template_parameter, r);
+}
+
+consteval auto is_template_parameter_pack(info r) -> bool {
+  return __metafunction(detail::__usagi_metafn_is_template_parameter_pack, r);
+}
+
+consteval auto type_constraint_of(info r) -> info {
+  return __metafunction(detail::__usagi_metafn_type_constraint_of, r);
+}
+
+#endif  // __has_feature(ext_yukino_reflect_templates)
 
 _LIBCPP_END_NAMESPACE_REFLECTION_V2
 
@@ -2909,7 +2974,7 @@ template <info R>  // Function pointers.
               is_function_type(remove_pointer(R)))
 consteval auto pretty_printer<CharT>::tprint_impl::render() -> string_t {
 
-#if __has_feature(parameter_reflection)
+#if __has_feature(parameter_reflection) || __RESHARPER__
   constexpr auto FnTy = remove_pointer(R);
   string_t result = render<return_type_of(FnTy)>() + string_constant("(*)(");
   size_t Idx = 0;
@@ -2932,7 +2997,7 @@ template <typename CharT>
 template <info R>  // Function types.
     requires (is_type(R) && is_function_type(R))
 consteval auto pretty_printer<CharT>::tprint_impl::render() -> string_t {
-#if __has_feature(parameter_reflection)
+#if __has_feature(parameter_reflection) || __RESHARPER__
   string_t result = render<return_type_of(R)>() + string_constant("(");
   size_t Idx = 0;
   [:expand(parameters_of(R)):] >> [&]<auto Param> {
@@ -2979,7 +3044,7 @@ template <info R>  // Pointer to member function types.
 consteval auto pretty_printer<CharT>::tprint_impl::render() -> string_t {
   constexpr auto FnTy = type_of_member_from_memptr<R>();
 
-#if __has_feature(parameter_reflection)
+#if __has_feature(parameter_reflection) || __RESHARPER__
   string_t result = render<return_type_of(FnTy)>() + string_constant("(");
   result += render<type_of_object_from_memptr<R>()>() +
             string_constant("::*)(");

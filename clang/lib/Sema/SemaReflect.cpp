@@ -406,13 +406,16 @@ public:
       TemplateArgumentListInfo TAListInfo;
       populateTemplateArgumentListInfo(TAListInfo, TArgs, InstantiateLoc);
 
-      // todo [merge:yukino:maybe-revert]
       DeclResult Result =
           S.CheckVarTemplateId(TD, InstantiateLoc, InstantiateLoc, TAListInfo,
                                // Args are synthesized rather than written.
                                /*SetWrittenArgs=*/false);
-      if (Result.isInvalid())
+
+      // Explicitly check if the result pointer is null, even if isInvalid() is
+      // false.
+      if (Result.isInvalid() || !Result.get())
         return nullptr;
+
       Spec = cast<VarTemplateSpecializationDecl>(Result.get());
 
       if (!Spec->getTemplateSpecializationKind())

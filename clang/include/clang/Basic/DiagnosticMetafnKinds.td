@@ -58,6 +58,10 @@ def metafn_cannot_invoke : Note<"cannot invoke %0">;
 def metafn_no_specialization_found : Note<
   "no specialization of the function template %0 matched the provided "
   "arguments">;
+def metafn_substitution_failure : Note<
+  "substitution into %0 failed">;
+def metafn_substitution_failure_with_args : Note<
+  "substitution into %0 failed with arguments %1">;
 def metafn_invalid_call_expr : Note<
   "invocation cannot be formed with the provided arguments">;
 def metafn_returns_non_structural_type : Note<
