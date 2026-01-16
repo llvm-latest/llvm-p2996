@@ -2785,8 +2785,19 @@ void StmtPrinter::VisitCXXMetafunctionExpr(CXXMetafunctionExpr *S) {
   OS << ")";
 }
 
-void StmtPrinter::VisitCXXSpliceExpr(CXXSpliceExpr *S) {
-  OS << "[: ... :]";
+void StmtPrinter::VisitCXXSpliceExpr(CXXSpliceExpr *E) {
+  if (E->getTemplateKeywordLoc().isValid())
+    OS << "template ";
+
+  OS << "[: ";
+  if (Expr *Model = E->getModel())
+    PrintExpr(Model);
+  else
+    OS << "<null expr>";
+  OS << " :]";
+
+  if (E->hasExplicitTemplateArgs())
+    printTemplateArgumentList(OS, E->template_arguments(), Policy);
 }
 
 void StmtPrinter::VisitCXXDependentMemberSpliceExpr(
@@ -2810,7 +2821,7 @@ void StmtPrinter::VisitExplicitlyDependentCallExpr(
 }
 
 void StmtPrinter::VisitCXXIndeterminateExpansionStmt(
-                                          CXXIndeterminateExpansionStmt *Node) {
+    CXXIndeterminateExpansionStmt *Node) {
   Indent() << "template for (";
   if (Node->getInit())
     PrintInitStmt(Node->getInit(), 14);
@@ -2818,14 +2829,14 @@ void StmtPrinter::VisitCXXIndeterminateExpansionStmt(
   SubPolicy.SuppressInitializers = true;
   Node->getExpansionVariable()->print(OS, SubPolicy, IndentLevel);
   OS << " : ";
-  // TODO(P2996).
-  OS << "<range>"; //PrintExpr(Node->getRange());
+  if (Expr *Range = Node->getTParamRef())
+    PrintExpr(Range);
   OS << ")";
   PrintControlledStmt(Node->getBody());
 }
 
 void StmtPrinter::VisitCXXDestructurableExpansionStmt(
-                                         CXXDestructurableExpansionStmt *Node) {
+    CXXDestructurableExpansionStmt *Node) {
   Indent() << "template for (";
   if (Node->getInit())
     PrintInitStmt(Node->getInit(), 14);
@@ -2833,14 +2844,14 @@ void StmtPrinter::VisitCXXDestructurableExpansionStmt(
   SubPolicy.SuppressInitializers = true;
   Node->getExpansionVariable()->print(OS, SubPolicy, IndentLevel);
   OS << " : ";
-  // TODO(P2996).
-  OS << "<range>"; //PrintExpr(Node->getRange());
+  if (Expr *Range = Node->getTParamRef())
+    PrintExpr(Range);
   OS << ")";
   PrintControlledStmt(Node->getBody());
 }
 
 void StmtPrinter::VisitCXXIterableExpansionStmt(
-                                               CXXIterableExpansionStmt *Node) {
+    CXXIterableExpansionStmt *Node) {
   Indent() << "template for (";
   if (Node->getInit())
     PrintInitStmt(Node->getInit(), 14);
@@ -2848,14 +2859,14 @@ void StmtPrinter::VisitCXXIterableExpansionStmt(
   SubPolicy.SuppressInitializers = true;
   Node->getExpansionVariable()->print(OS, SubPolicy, IndentLevel);
   OS << " : ";
-  // TODO(P2996).
-  OS << "<range>"; //PrintExpr(Node->getRange());
+  if (Expr *Range = Node->getTParamRef())
+    PrintExpr(Range);
   OS << ")";
   PrintControlledStmt(Node->getBody());
 }
 
 void StmtPrinter::VisitCXXInitListExpansionStmt(
-                                               CXXInitListExpansionStmt *Node) {
+    CXXInitListExpansionStmt *Node) {
   Indent() << "template for (";
   if (Node->getInit())
     PrintInitStmt(Node->getInit(), 14);
@@ -2863,14 +2874,14 @@ void StmtPrinter::VisitCXXInitListExpansionStmt(
   SubPolicy.SuppressInitializers = true;
   Node->getExpansionVariable()->print(OS, SubPolicy, IndentLevel);
   OS << " : ";
-  // TODO(P2996).
-  OS << "<range>"; //PrintExpr(Node->getRange());
+  if (Expr *Range = Node->getTParamRef())
+    PrintExpr(Range);
   OS << ")";
   PrintControlledStmt(Node->getBody());
 }
 
 void StmtPrinter::VisitCXXExpansionInitListExpr(
-                                               CXXExpansionInitListExpr *Node) {
+    CXXExpansionInitListExpr *Node) {
   OS << "{";
 
   unsigned idx = 0;
@@ -2889,18 +2900,29 @@ void StmtPrinter::VisitCXXExpansionInitListSelectExpr(
 }
 
 void StmtPrinter::VisitCXXIterableExpansionSelectExpr(
-        CXXIterableExpansionSelectExpr *Node) {
-  // TODO(P2996): Implement this.
+    CXXIterableExpansionSelectExpr *Node) {
+  if (Expr *Impl = Node->getImplExpr())
+    PrintExpr(Impl);
 }
 
 void StmtPrinter::VisitCXXDestructurableExpansionSelectExpr(
-        CXXDestructurableExpansionSelectExpr *Node) {
-  // TODO(P2996): Implement this.
+    CXXDestructurableExpansionSelectExpr *Node) {
+  if (VarDecl *VD = Node->getExpansionVar())
+    VD->printName(OS);
+  OS << "[";
+  if (Expr *Idx = Node->getIdxExpr())
+    PrintExpr(Idx);
+  OS << "]";
 }
 
 void StmtPrinter::VisitCXXIndeterminateExpansionSelectExpr(
-        CXXIndeterminateExpansionSelectExpr *Node) {
-  // TODO(P2996): Implement this.
+    CXXIndeterminateExpansionSelectExpr *Node) {
+  if (Expr *Range = Node->getRangeExpr())
+    PrintExpr(Range);
+  OS << "[";
+  if (Expr *Idx = Node->getIdxExpr())
+    PrintExpr(Idx);
+  OS << "]";
 }
 
 // Obj-C
