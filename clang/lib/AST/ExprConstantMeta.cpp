@@ -561,55 +561,77 @@ void getDeclName(std::string &Result, ASTContext &C, Decl *D) {
   }
 }
 
-bool getParameterName(ParmVarDecl *PVD, std::string &Out) {
-  // Parameters instantiated from function parameter packs are not considered
-  // to have identifiers.
-  if (auto STTPT = dyn_cast<SubstTemplateTypeParmType>(PVD->getType());
-      STTPT && STTPT->getPackIndex())
-    return true;
+// Returns true if an error occurred (diagnostic emitted).
+// Sets 'Consistent' to false if the name is inconsistent across redeclarations.
+bool getParameterName(const MetaFunctionEvalContext &EvalCtx,
+                      const ParmVarDecl *D, std::string &Out,
+                      bool &Consistent) {
+  Consistent = true;
 
-  unsigned ParamIdx = PVD->getFunctionScopeIndex();
+  if (const auto *PVD = dyn_cast<ParmVarDecl>(D)) {
+    // Parameters instantiated from function parameter packs are not considered
+    // to have identifiers.
+    if (auto STTPT = dyn_cast<SubstTemplateTypeParmType>(PVD->getType());
+        STTPT && STTPT->getPackIndex())
+      return false;
 
-  // TODO(P2996): This will crash if we're in the trailing requires-clause of
-  // a function declaration, since the DeclContext is not the function but the
-  // TranslationUnitDecl.
-  FunctionDecl *FD = cast<FunctionDecl>(PVD->getDeclContext());
-  FD = FD->getMostRecentDecl();
-  PVD = FD->getParamDecl(ParamIdx);
+    unsigned ParamIdx = PVD->getFunctionScopeIndex();
 
-  bool Consistent = true;
-  StringRef FirstNameSeen = PVD->getName();
-
-  while (PVD) {
-    FD = cast<FunctionDecl>(PVD->getDeclContext());
-    FD = FD->getPreviousDecl();
+    const auto *FD = dyn_cast<FunctionDecl>(PVD->getDeclContext());
     if (!FD) {
-      Out = FirstNameSeen;
-      return true;
+      // Consistent with getMostRecentParmVarDecl:
+      // If we are in a trailing requires-clause (or similar context where the
+      // function decl is not yet fully attached), the parameter is valid and
+      // its name is consistent (as it is the only declaration).
+      Out = PVD->getNameAsString();
+      return false;
     }
 
-    PVD = FD->getParamDecl(ParamIdx);
-    assert(PVD);
-    if (IdentifierInfo *II = PVD->getIdentifier()) {
-      if (FirstNameSeen.empty()) {
-        FirstNameSeen = II->getName();
-      } else if (II->getName() != FirstNameSeen) {
-        Consistent = false;
-        break;
+    FD = FD->getMostRecentDecl();
+    const auto *CurrentPVD = FD->getParamDecl(ParamIdx);
+
+    Consistent = true;
+    StringRef FirstNameSeen = CurrentPVD->getName();
+
+    while (CurrentPVD) {
+      FD = cast<FunctionDecl>(CurrentPVD->getDeclContext());
+      FD = FD->getPreviousDecl();
+      if (!FD) {
+        Out = FirstNameSeen;
+        return false;
+      }
+
+      CurrentPVD = FD->getParamDecl(ParamIdx);
+      assert(CurrentPVD);
+      if (IdentifierInfo *II = CurrentPVD->getIdentifier()) {
+        if (FirstNameSeen.empty()) {
+          FirstNameSeen = II->getName();
+        } else if (II->getName() != FirstNameSeen) {
+          Consistent = false;
+          break;
+        }
       }
     }
+    Out = FirstNameSeen;
+    return false;
   }
-  Out = FirstNameSeen;
-  return Consistent;
+
+  return false;
 }
 
-ParmVarDecl *getMostRecentParmVarDecl(ParmVarDecl *PVD) {
-  // TODO(P2996): This will crash if we're in the trailing requires-clause of
-  // a function declaration, since the DeclContext is not the function but the
-  // TranslationUnitDecl.
-  FunctionDecl *FD = cast<FunctionDecl>(PVD->getDeclContext());
-  FD = FD->getMostRecentDecl();
-  return FD->getParamDecl(PVD->getFunctionScopeIndex());
+ParmVarDecl *getMostRecentParmVarDecl(const MetaFunctionEvalContext &EvalCtx,
+                                      ParmVarDecl *PVD) {
+  // Fix(P2996): Use dyn_cast to prevent crashing in trailing requires-clauses
+  // where DeclContext might not be a FunctionDecl.
+  if (auto *FD = dyn_cast<FunctionDecl>(PVD->getDeclContext())) {
+    FD = FD->getMostRecentDecl();
+    return FD->getParamDecl(PVD->getFunctionScopeIndex());
+  }
+
+  // If the parameter is not yet attached to a FunctionDecl (e.g. during the
+  // parsing of a trailing requires-clause), it is effectively the only
+  // declaration of that parameter currently known. Return it as-is.
+  return PVD;
 }
 
 #pragma region FindDecl Helpers
@@ -1731,8 +1753,10 @@ bool identifier_of(const MetaFunctionEvalContext &EvalCtx) {
     break;
   }
   case ReflectionKind::Parameter: {
-    bool ConsistentName = getParameterName(RV.getReflectedParameter(), Name);
-    if (EnforceConsistent && !ConsistentName) {
+    bool Consistent;
+    if (getParameterName(EvalCtx, RV.getReflectedParameter(), Name, Consistent))
+      return true; // Diagnostic emitted
+    if (EnforceConsistent && !Consistent) {
       return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
                                diag::metafn_inconsistent_name)
              << DescriptionOf(RV) << EvalCtx.Range;
@@ -1852,8 +1876,9 @@ bool has_identifier(const MetaFunctionEvalContext &EvalCtx) {
     auto *PVD = RV.getReflectedParameter();
 
     std::string Name;
-    bool Consistent = getParameterName(PVD, Name);
-
+    bool Consistent;
+    if (getParameterName(EvalCtx, RV.getReflectedParameter(), Name, Consistent))
+      return true; // Diagnostic emitted
     HasIdentifier = Consistent && !Name.empty();
     break;
   }
@@ -1867,7 +1892,9 @@ bool has_identifier(const MetaFunctionEvalContext &EvalCtx) {
       break;
     else if (auto *PVD = dyn_cast<ParmVarDecl>(D)) {
       std::string Name;
-      (void)getParameterName(PVD, Name);
+      bool Consistent;
+      if (getParameterName(EvalCtx, PVD, Name, Consistent))
+        return true; // Diagnostic emitted
       HasIdentifier = !Name.empty();
     } else if (auto *ND = dyn_cast<NamedDecl>(D))
       HasIdentifier = (ND->getIdentifier() != nullptr);
@@ -5152,7 +5179,12 @@ bool has_default_argument(const MetaFunctionEvalContext &EvalCtx) {
 
   switch (RV.getReflectionKind()) {
   case ReflectionKind::Parameter: {
-    ParmVarDecl *PVD = getMostRecentParmVarDecl(RV.getReflectedParameter());
+    // We must find the most recent decl to see the default arg if it was added
+    // in a redeclaration.
+    ParmVarDecl *PVD = dyn_cast<ParmVarDecl>(RV.getReflectedParameter());
+    PVD = getMostRecentParmVarDecl(EvalCtx, PVD);
+    if (!PVD)
+      return true; // Diagnostic emitted by helper
     return SetBoolAndSucceed(EvalCtx, PVD->hasDefaultArg());
   }
 #pragma region usagi-ext
