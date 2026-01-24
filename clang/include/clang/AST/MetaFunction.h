@@ -1,4 +1,4 @@
-//===-- Metafunction.h - Classes for representing metafunctions--*- C++ -*-===//
+//===-- MetaFunction.h - Classes for representing metafunctions--*- C++ -*-===//
 //
 // Copyright 2024 Bloomberg Finance L.P.
 //
