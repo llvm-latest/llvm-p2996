@@ -1215,9 +1215,9 @@ void CheckResultTyIsSizeT(const MetaFunctionEvalContext &EvalCtx) {
 // Yukino's extension helper functions
 // -----------------------------------------------------------------------------
 
-#pragma region Yukino's extension helpers
+// #pragma region Yukino's extension helpers
 
-#pragma endregion
+// #pragma endregion
 
 // -----------------------------------------------------------------------------
 // Metafunction implementations
