@@ -4858,10 +4858,10 @@ bool get_ith_parameter_of(const MetaFunctionEvalContext &EvalCtx) {
     }
     // Template Parameters (Class/Var/Alias Templates reflected as Decls)
     if (TemplateDecl *TD = dyn_cast<TemplateDecl>(RV.getReflectedDecl())) {
-      if (!CheckYukinoExtension(
-              EvalCtx, EvalCtx.C->getLangOpts().UsagiTemplateReflection,
-              ReflExtName_UsagiTemplate))
-        return true;
+      // if (!CheckYukinoExtension(
+      //         EvalCtx, EvalCtx.C->getLangOpts().UsagiTemplateReflection,
+      //         ReflExtName_UsagiTemplate))
+      //   return true;
 
       TemplateParameterList *TPL = TD->getTemplateParameters();
       if (idx >= TPL->size())
@@ -4874,10 +4874,10 @@ bool get_ith_parameter_of(const MetaFunctionEvalContext &EvalCtx) {
            << 5 << DescriptionOf(RV) << EvalCtx.Range;
   }
   case ReflectionKind::Template: {
-    if (!CheckYukinoExtension(EvalCtx,
-                              EvalCtx.C->getLangOpts().UsagiTemplateReflection,
-                              ReflExtName_UsagiTemplate))
-      return true;
+    // if (!CheckYukinoExtension(EvalCtx,
+    //                           EvalCtx.C->getLangOpts().UsagiTemplateReflection,
+    //                           ReflExtName_UsagiTemplate))
+    //   return true;
 
     TemplateName TN = RV.getReflectedTemplate();
     // Convert the TemplateName to the underlying declaration
