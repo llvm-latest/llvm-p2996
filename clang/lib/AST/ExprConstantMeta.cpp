@@ -3426,7 +3426,7 @@ bool is_class_member(const MetaFunctionEvalContext &EvalCtx) {
   auto ScratchCtx = SCC();
   // decltype(EvalCtx.Diagnoser) SwallowDiags{};
   if (!parent_of(ScratchCtx)) {
-    assert(Scratch.isReflection());
+    assert(ScratchCtx.Result->isReflection());
     // For unscoped enumerators, parent_of will return its enumeration type
     // We need now to lookup context on that type
     if (ScratchCtx.Result->isReflectedType() &&
@@ -3452,7 +3452,7 @@ bool is_namespace_member(const MetaFunctionEvalContext &EvalCtx) {
   auto ScratchCtx = SCC();
   // decltype(EvalCtx.Diagnoser) SwallowDiags{};
   if (!parent_of(ScratchCtx)) {
-    assert(Scratch.isReflection());
+    assert(ScratchCtx.Result->isReflection());
     result = ScratchCtx.Result->isReflectedNamespace();
   }
   return SetBoolAndSucceed(EvalCtx, result);

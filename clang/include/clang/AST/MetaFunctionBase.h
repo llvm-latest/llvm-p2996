@@ -9,7 +9,7 @@
 #ifndef LLVM_CLANG_AST_METAFUNCTION_BASE_H
 #define LLVM_CLANG_AST_METAFUNCTION_BASE_H
 
-#include "clang/Basic/SourceLocation.h"
+#include "clang/AST/APValue.h"
 
 namespace clang {
 
@@ -145,8 +145,6 @@ enum class MetaFunctionID : std::uint8_t {
   sentinel = 133,
 };
 
-class APValue;
-class ASTContext;
 class MetaActions;
 class Expr;
 class PartialDiagnostic;

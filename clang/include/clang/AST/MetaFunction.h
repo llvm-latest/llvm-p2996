@@ -16,11 +16,9 @@
 #ifndef LLVM_CLANG_AST_METAFUNCTION_H
 #define LLVM_CLANG_AST_METAFUNCTION_H
 
-#include "clang/AST/ASTContext.h"
 #include "clang/AST/ExprCXX.h"
 #include "clang/AST/MetaActions.h"
 #include "clang/AST/MetaFunctionBase.h"
-#include "clang/AST/TypeBase.h"
 
 namespace clang {
 
