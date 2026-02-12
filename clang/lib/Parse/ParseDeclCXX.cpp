@@ -19,6 +19,8 @@
 #include "clang/Basic/Attributes.h"
 #include "clang/Basic/CharInfo.h"
 #include "clang/Basic/DiagnosticParse.h"
+#include "clang/Basic/DiagnosticSema.h"
+#include "clang/Basic/IdentifierTable.h"
 #include "clang/Basic/TargetInfo.h"
 #include "clang/Basic/TokenKinds.h"
 #include "clang/Lex/LiteralSupport.h"
@@ -4862,12 +4864,15 @@ void Parser::ParseCXX11AttributeSpecifierInternal(ParsedAttributes &Attrs,
       SkipUntil(tok::r_square, tok::colon, tok::r_splice, StopBeforeMatch);
     }
 
+    TentativeParsingAction TPA(*this);
     AttrName = TryParseCXX11AttributeIdentifier(
         AttrLoc, SemaCodeCompletion::AttributeCompletion::Attribute,
         CommonScopeName);
-    if (!AttrName)
+    if (!AttrName) {
       // Break out to the "expected ']'" diagnostic.
+      TPA.Commit();
       break;
+    }
 
     // scoped attribute
     if (TryConsumeToken(tok::coloncolon)) {
@@ -4878,6 +4883,7 @@ void Parser::ParseCXX11AttributeSpecifierInternal(ParsedAttributes &Attrs,
           AttrLoc, SemaCodeCompletion::AttributeCompletion::Attribute,
           ScopeName);
       if (!AttrName) {
+        TPA.Commit();
         Diag(Tok.getLocation(), diag::err_expected) << tok::identifier;
         SkipUntil(tok::r_square, tok::comma, StopAtSemi | StopBeforeMatch);
         continue;
@@ -4900,6 +4906,76 @@ void Parser::ParseCXX11AttributeSpecifierInternal(ParsedAttributes &Attrs,
                                            ScopeName, ScopeLoc, OpenMPTokens);
 
     if (!AttrParsed) {
+      // NOTE: Make the unknown attribute as an C++ 26 annotation
+      if (getLangOpts().AnnotationAttributes) {
+        static auto IsBuiltInAttribute = [](IdentifierInfo *AttrName,
+                                            IdentifierInfo *ScopeName) {
+          AttributeCommonInfo::Kind Kind = ParsedAttr::getParsedKind(
+              AttrName, ScopeName, ParsedAttr::AS_CXX11);
+          return Kind != AttributeCommonInfo::UnknownAttribute;
+        };
+
+        if (ScopeName == nullptr && !IsBuiltInAttribute(AttrName, ScopeName)) {
+          auto TryParseAnnotation = [this, &Attrs, &EndLoc](bool InsertParens) {
+            SourceLocation EqLoc = Tok.getLocation();
+            TentativeParsingAction TPA(*this);
+
+            // insert '(' and ')' tokens at the current position
+            if (InsertParens) {
+              Token Toks[2];
+              Token &Tok1 = Toks[0];
+              Tok1.startToken();
+              Tok1.setKind(tok::l_paren);
+              Token &Tok2 = Toks[1];
+              Tok2.startToken();
+              Tok2.setKind(tok::r_paren);
+              PP.EnterTokens(Toks, true);
+            }
+
+            Diags.setSuppressAllDiagnostics(true);
+            ExprResult AnnotExpr = ParseConstantExpression();
+            Diags.setSuppressAllDiagnostics(false);
+
+            if (!AnnotExpr.isInvalid() && !AnnotExpr.get()->containsErrors()) {
+              TPA.Commit();
+              IdentifierTable &IT = Actions.PP.getIdentifierTable();
+              IdentifierInfo &Placeholder = IT.get("__annotation_placeholder");
+
+              ArgsVector ArgExprs;
+              ArgExprs.push_back(AnnotExpr.get());
+              Attrs.addNew(&Placeholder, EqLoc, {}, ArgExprs.data(), 1,
+                           ParsedAttr::Form::Annotation());
+
+              if (EndLoc)
+                *EndLoc = AnnotExpr.get()->getEndLoc();
+
+              return true;
+            }
+
+            TPA.Revert();
+            if (InsertParens) {
+              // Remove previously inserted tokens '(' and ')'
+              PP.RemoveNextCachedToken(2);
+              ConsumeToken();
+            }
+            return false;
+          };
+
+          TPA.Revert();
+          assert(Tok.is(tok::identifier) && "Expected an identifier");
+
+          if (TryParseAnnotation(/*InsertParens=*/false))
+            continue;
+
+          if (TryParseAnnotation(/*InsertParens=*/true))
+            continue;
+        } else {
+          TPA.Commit();
+        }
+      } else {
+        TPA.Commit();
+      }
+
       Attrs.addNew(AttrName,
                    SourceRange(ScopeLoc.isValid() && CommonScopeLoc.isInvalid()
                                    ? ScopeLoc
@@ -4910,6 +4986,8 @@ void Parser::ParseCXX11AttributeSpecifierInternal(ParsedAttributes &Attrs,
                    getLangOpts().CPlusPlus ? ParsedAttr::Form::CXX11()
                                            : ParsedAttr::Form::C23());
       AttrParsed = true;
+    } else {
+      TPA.Commit();
     }
 
     if (TryConsumeToken(tok::ellipsis))

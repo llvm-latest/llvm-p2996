@@ -1070,6 +1070,8 @@ public:
       H.addToken(A->getLocation(), HighlightingKind::Modifier);
       break;
     default:
+      if (A->isCXX11Attribute())
+        H.addToken(A->getLocation(), HighlightingKind::Class);
       break;
     }
     return true;

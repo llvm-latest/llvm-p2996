@@ -4840,15 +4840,16 @@ void SemaCodeCompletion::CodeCompleteAttribute(
   // So if we're already in a scope, we determine its canonical spellings
   // (for comparison with normalized attr spelling) and remember whether it was
   // underscore-guarded (so we know how to spell contained attributes).
-  llvm::StringRef InScopeName;
-  bool InScopeUnderscore = false;
-  if (InScope) {
-    InScopeName = InScope->getName();
-    if (const char *NoUnderscore = noUnderscoreAttrScope(InScopeName)) {
-      InScopeName = NoUnderscore;
-      InScopeUnderscore = true;
-    }
-  }
+  // NOTE: does not include unnecessary attributes
+  // llvm::StringRef InScopeName;
+  constexpr bool InScopeUnderscore = false;
+  // if (InScope) {
+  //   InScopeName = InScope->getName();
+  //   if (const char *NoUnderscore = noUnderscoreAttrScope(InScopeName)) {
+  //     InScopeName = NoUnderscore;
+  //     InScopeUnderscore = true;
+  //   }
+  // }
   bool SyntaxSupportsGuards = Syntax == AttributeCommonInfo::AS_GNU ||
                               Syntax == AttributeCommonInfo::AS_CXX11 ||
                               Syntax == AttributeCommonInfo::AS_C23;
@@ -4878,19 +4879,21 @@ void SemaCodeCompletion::CodeCompleteAttribute(
         if (!Scope.empty() && FoundScopes.insert(Scope).second) {
           Results.AddResult(
               CodeCompletionResult(Results.getAllocator().CopyString(Scope)));
+          // NOTE: does not include unnecessary attributes
           // Include alternate form (__gnu__ instead of gnu).
-          if (const char *Scope2 = underscoreAttrScope(Scope))
-            Results.AddResult(CodeCompletionResult(Scope2));
+          // if (const char *Scope2 = underscoreAttrScope(Scope))
+          //   Results.AddResult(CodeCompletionResult(Scope2));
         }
         continue;
       }
 
+      // NOTE: does not include unnecessary attributes
       // If a scope was specified, it must match but we don't need to print it.
-      if (!InScopeName.empty()) {
-        if (Scope != InScopeName)
-          continue;
-        Scope = "";
-      }
+      // if (!InScopeName.empty()) {
+      //   if (Scope != InScopeName)
+      //     continue;
+      //   Scope = "";
+      // }
 
       auto Add = [&](llvm::StringRef Scope, llvm::StringRef Name,
                      bool Underscores) {
@@ -4927,20 +4930,22 @@ void SemaCodeCompletion::CodeCompleteAttribute(
       // Note this is (a suffix of) the NormalizedFullName, no need to copy.
       // If an underscore-guarded scope was specified, only the
       // underscore-guarded attribute name is relevant.
+      // NOTE: does not include unnecessary attributes
       if (!InScopeUnderscore)
         Add(Scope, Name, /*Underscores=*/false);
 
       // Generate the underscore-guarded version, for syntaxes that support it.
       // We skip this if the scope was already spelled and not guarded, or
       // we must spell it and can't guard it.
+      // NOTE: does not include unnecessary attributes
       if (!(InScope && !InScopeUnderscore) && SyntaxSupportsGuards) {
         if (Scope.empty()) {
           Add(Scope, Name, /*Underscores=*/true);
         } else {
-          const char *GuardedScope = underscoreAttrScope(Scope);
-          if (!GuardedScope)
-            continue;
-          Add(GuardedScope, Name, /*Underscores=*/true);
+          // const char *GuardedScope = underscoreAttrScope(Scope);
+          // if (!GuardedScope)
+          //   continue;
+          // Add(GuardedScope, Name, /*Underscores=*/true);
         }
       }
 
