@@ -516,6 +516,9 @@ static bool evaluateAsString(Sema &SemaRef, Expr *Message, ResultType &Result,
   if (EvaluatedData.isInvalid())
     return false;
 
+  Expr::EvalResult Status;
+  Message->EvaluateCharRangeAsString(Result, EvaluatedSize.get(),
+                                     EvaluatedData.get(), Ctx, Status);
   return true;
 }
 
