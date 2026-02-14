@@ -7362,10 +7362,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   Args.addOptInFlag(CmdArgs, options::OPT_freflection_latest,
                     options::OPT_fno_reflection_latest);
 
-  // Usagi reflection extensions
-  Args.addOptInFlag(CmdArgs, options::OPT_fext_usagi_template_reflection,
-                    options::OPT_fno_ext_usagi_template_reflection);
-
   // -fsized-deallocation is on by default in C++14 onwards and otherwise off
   // by default.
   Args.addLastArg(CmdArgs, options::OPT_fsized_deallocation,

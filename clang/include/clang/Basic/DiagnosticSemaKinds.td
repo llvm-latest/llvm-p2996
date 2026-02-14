@@ -3268,11 +3268,6 @@ def err_splice_intervening_lambda : Error<
   "cannot splice local entity %0 for which there is an intervening lambda "
   "expression">;
 
-// Usagi extensions
-def warn_usagi_extensions_required : Warning<
-  "reflection of this entity requires enabling an extension with flag '%0'">,
-  InGroup<DiagGroup<"ext-usagi">>, DefaultIgnore;
-
 def err_metafunction_empty_args : Error<
   "__metafunction requires arguments">;
 def err_metafunction_leading_arg_type : Error<
