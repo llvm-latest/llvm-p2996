@@ -581,23 +581,10 @@ AST Matchers
 
 clang-format
 ------------
-- Add ``SpaceInEmptyBraces`` option and set it to ``Always`` for WebKit style.
-- Add ``NumericLiteralCase`` option for enforcing character case in numeric
-  literals.
-- Add ``Leave`` suboption to ``IndentPPDirectives``.
-- Add ``AllowBreakBeforeQtProperty`` option.
-- Add ``BreakAfterOpenBracketBracedList'', ``BreakAfterOpenBracketFunction'',
-  ``BreakAfterOpenBracketIf``, ``BreakAfterOpenBracketLoop``,
-  ``BreakAfterOpenBracketSwitch``, ``BreakBeforeCloseBracketBracedList'',
-  ``BreakBeforeCloseBracketFunction``, ``BreakBeforeCloseBracketIf``,
-  ``BreakBeforeCloseBracketLoop``, ``BreakBeforeCloseBracketSwitch`` options.
-- Deprecate ``AlwaysBreak`` and ``BlockIndent`` suboptions from the
-  ``AlignAfterOpenBracket`` option, and make ``AlignAfterOpenBracket`` a
-  ``bool`` type.
-- Add ``AlignPPAndNotPP`` suboption to ``AlignTrailingComments``.
-- Rename ``(Binary|Decimal|Hex)MinDigits`` to ``...MinDigitsInsert`` and  add
-  ``(Binary|Decimal|Hex)MaxDigitsSeparator`` suboptions to
-  ``IntegerLiteralSeparator``.
+- Add ``ObjCSpaceAfterMethodDeclarationPrefix`` option to control space between the
+  '-'/'+' and the return type in Objective-C method declarations
+- Add ``AfterComma`` value to ``BreakConstructorInitializers`` to allow breaking
+  constructor initializers after commas, keeping the colon on the same line.
 
 libclang
 --------
