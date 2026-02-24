@@ -1194,6 +1194,9 @@ DEF_TRAVERSE_TYPE(CountAttributedType, {
 DEF_TRAVERSE_TYPE(BTFTagAttributedType,
                   { TRY_TO(TraverseType(T->getWrappedType())); })
 
+DEF_TRAVERSE_TYPE(OverflowBehaviorType,
+                  { TRY_TO(TraverseType(T->getUnderlyingType())); })
+
 DEF_TRAVERSE_TYPE(HLSLAttributedResourceType,
                   { TRY_TO(TraverseType(T->getWrappedType())); })
 
@@ -1553,6 +1556,9 @@ DEF_TRAVERSE_TYPELOC(CountAttributedType,
 DEF_TRAVERSE_TYPELOC(BTFTagAttributedType,
                      { TRY_TO(TraverseTypeLoc(TL.getWrappedLoc())); })
 
+DEF_TRAVERSE_TYPELOC(OverflowBehaviorType,
+                     { TRY_TO(TraverseTypeLoc(TL.getWrappedLoc())); })
+
 DEF_TRAVERSE_TYPELOC(HLSLAttributedResourceType,
                      { TRY_TO(TraverseTypeLoc(TL.getWrappedLoc())); })
 
@@ -1751,7 +1757,7 @@ DEF_TRAVERSE_DECL(FriendDecl, {
     // it will not be in the parent context:
     if (auto *TT = D->getFriendType()->getType()->getAs<TagType>();
         TT && TT->isTagOwned())
-      TRY_TO(TraverseDecl(TT->getOriginalDecl()));
+      TRY_TO(TraverseDecl(TT->getDecl()));
   } else {
     TRY_TO(TraverseDecl(D->getFriendDecl()));
   }
@@ -2616,6 +2622,7 @@ DEF_TRAVERSE_STMT(DefaultStmt, {})
 DEF_TRAVERSE_STMT(DoStmt, {})
 DEF_TRAVERSE_STMT(ForStmt, {})
 DEF_TRAVERSE_STMT(GotoStmt, {})
+DEF_TRAVERSE_STMT(DeferStmt, {})
 DEF_TRAVERSE_STMT(IfStmt, {})
 DEF_TRAVERSE_STMT(IndirectGotoStmt, {})
 DEF_TRAVERSE_STMT(LabelStmt, {})
@@ -2837,7 +2844,7 @@ DEF_TRAVERSE_STMT(CXXNewExpr, {
 DEF_TRAVERSE_STMT(OffsetOfExpr, {
   // The child-iterator will pick up the expression representing
   // the field.
-  // FIMXE: for code like offsetof(Foo, a.b.c), should we get
+  // FIXME: for code like offsetof(Foo, a.b.c), should we get
   // making a MemberExpr callbacks for Foo.a, Foo.a.b, and Foo.a.b.c?
   TRY_TO(TraverseTypeLoc(S->getTypeSourceInfo()->getTypeLoc()));
 })
@@ -2938,6 +2945,84 @@ DEF_TRAVERSE_STMT(CXXUnresolvedConstructExpr, {
   TRY_TO(TraverseTypeLoc(S->getTypeSourceInfo()->getTypeLoc()));
 })
 
+DEF_TRAVERSE_STMT(CXXReflectExpr, {
+  if (S->hasDependentSubExpr()) {
+    TRY_TO(TraverseStmt(S->getDependentSubExpr()));
+  } else {
+    APValue RV = S->getReflection();
+    assert(RV.isReflection());
+    switch (RV.getReflectionKind()) {
+    case ReflectionKind::Type: {
+      TRY_TO(TraverseType(RV.getReflectedType()));
+      break;
+    }
+    case ReflectionKind::Declaration: {
+      TRY_TO(TraverseDecl(RV.getReflectedDecl()));
+      break;
+    }
+    case ReflectionKind::Template: {
+      TRY_TO(TraverseTemplateName(RV.getReflectedTemplate()));
+      break;
+    }
+    case ReflectionKind::EntityProxy: {
+      TRY_TO(TraverseDecl(RV.getReflectedEntityProxy()));
+      break;
+    }
+    case ReflectionKind::Parameter: {
+      TRY_TO(TraverseDecl(RV.getReflectedParameter()));
+      break;
+    }
+    case ReflectionKind::Annotation: {
+      TRY_TO(TraverseStmt(RV.getReflectedAnnotation()->getArg()));
+      break;
+    }
+    case ReflectionKind::Null:
+    case ReflectionKind::Object:
+    case ReflectionKind::Value:
+    case ReflectionKind::Namespace:
+    case ReflectionKind::BaseSpecifier:
+    case ReflectionKind::DataMemberSpec:
+      break;
+    }
+  }
+})
+DEF_TRAVERSE_STMT(CXXMetafunctionExpr, {})
+DEF_TRAVERSE_STMT(CXXSpliceExpr, {
+  TRY_TO(TraverseSpliceSpecifier(S->getSplice()));
+})
+DEF_TRAVERSE_STMT(CXXDependentMemberSpliceExpr, {
+  TRY_TO(TraverseStmt(S->getBase()));
+  TRY_TO(TraverseStmt(S->getRHS()));
+})
+DEF_TRAVERSE_STMT(CXXExpansionInitListExpr, {
+  for (Expr *SubExpr : S->getSubExprs())
+    TRY_TO(TraverseStmt(SubExpr));
+})
+DEF_TRAVERSE_STMT(CXXIndeterminateExpansionSelectExpr, {
+  TRY_TO(TraverseStmt(S->getRangeExpr()));
+  TRY_TO(TraverseStmt(S->getIdxExpr()));
+})
+DEF_TRAVERSE_STMT(CXXIterableExpansionSelectExpr, {
+  TRY_TO(TraverseDecl(S->getRangeVar()));
+  TRY_TO(TraverseStmt(S->getImplExpr()));
+})
+DEF_TRAVERSE_STMT(CXXDestructurableExpansionSelectExpr, {
+  TRY_TO(TraverseDecl(S->getDecompositionDecl()));
+  TRY_TO(TraverseStmt(S->getIdxExpr()));
+})
+DEF_TRAVERSE_STMT(CXXExpansionInitListSelectExpr, {
+  TRY_TO(TraverseStmt(S->getRangeExpr()));
+  TRY_TO(TraverseStmt(S->getIdxExpr()));
+})
+DEF_TRAVERSE_STMT(StackLocationExpr, {})
+DEF_TRAVERSE_STMT(ExtractLValueExpr, {
+  TRY_TO(TraverseDecl(S->getValueDecl()));
+})
+DEF_TRAVERSE_STMT(ExplicitlyDependentCallExpr, {
+  TRY_TO(TraverseStmt(S->getSubExpr()));
+})
+DEF_TRAVERSE_STMT(CXXParenListInitExpr, {})
+
 // These expressions all might take explicit template arguments.
 // We traverse those if so.  FIXME: implement these.
 DEF_TRAVERSE_STMT(CXXConstructExpr, {})
@@ -2948,6 +3033,7 @@ DEF_TRAVERSE_STMT(CXXMemberCallExpr, {})
 // over the children.
 DEF_TRAVERSE_STMT(AddrLabelExpr, {})
 DEF_TRAVERSE_STMT(ArraySubscriptExpr, {})
+DEF_TRAVERSE_STMT(MatrixSingleSubscriptExpr, {})
 DEF_TRAVERSE_STMT(MatrixSubscriptExpr, {})
 DEF_TRAVERSE_STMT(ArraySectionExpr, {})
 DEF_TRAVERSE_STMT(OMPArrayShapingExpr, {})
@@ -2995,6 +3081,7 @@ DEF_TRAVERSE_STMT(UserDefinedLiteral, {})
 DEF_TRAVERSE_STMT(DesignatedInitExpr, {})
 DEF_TRAVERSE_STMT(DesignatedInitUpdateExpr, {})
 DEF_TRAVERSE_STMT(ExtVectorElementExpr, {})
+DEF_TRAVERSE_STMT(MatrixElementExpr, {})
 DEF_TRAVERSE_STMT(GNUNullExpr, {})
 DEF_TRAVERSE_STMT(ImplicitValueInitExpr, {})
 DEF_TRAVERSE_STMT(NoInitExpr, {})
@@ -3117,83 +3204,6 @@ DEF_TRAVERSE_STMT(SubstNonTypeTemplateParmExpr, {})
 DEF_TRAVERSE_STMT(FunctionParmPackExpr, {})
 DEF_TRAVERSE_STMT(CXXFoldExpr, {})
 DEF_TRAVERSE_STMT(AtomicExpr, {})
-DEF_TRAVERSE_STMT(CXXReflectExpr, {
-  if (S->hasDependentSubExpr()) {
-    TRY_TO(TraverseStmt(S->getDependentSubExpr()));
-  } else {
-    APValue RV = S->getReflection();
-    assert(RV.isReflection());
-    switch (RV.getReflectionKind()) {
-    case ReflectionKind::Type: {
-      TRY_TO(TraverseType(RV.getReflectedType()));
-      break;
-    }
-    case ReflectionKind::Declaration: {
-      TRY_TO(TraverseDecl(RV.getReflectedDecl()));
-      break;
-    }
-    case ReflectionKind::Template: {
-      TRY_TO(TraverseTemplateName(RV.getReflectedTemplate()));
-      break;
-    }
-    case ReflectionKind::EntityProxy: {
-      TRY_TO(TraverseDecl(RV.getReflectedEntityProxy()));
-      break;
-    }
-    case ReflectionKind::Parameter: {
-      TRY_TO(TraverseDecl(RV.getReflectedParameter()));
-      break;
-    }
-    case ReflectionKind::Annotation: {
-      TRY_TO(TraverseStmt(RV.getReflectedAnnotation()->getArg()));
-      break;
-    }
-    case ReflectionKind::Null:
-    case ReflectionKind::Object:
-    case ReflectionKind::Value:
-    case ReflectionKind::Namespace:
-    case ReflectionKind::BaseSpecifier:
-    case ReflectionKind::DataMemberSpec:
-      break;
-    }
-  }
-})
-DEF_TRAVERSE_STMT(CXXMetafunctionExpr, {})
-DEF_TRAVERSE_STMT(CXXSpliceExpr, {
-  TRY_TO(TraverseSpliceSpecifier(S->getSplice()));
-})
-DEF_TRAVERSE_STMT(CXXDependentMemberSpliceExpr, {
-  TRY_TO(TraverseStmt(S->getBase()));
-  TRY_TO(TraverseStmt(S->getRHS()));
-})
-DEF_TRAVERSE_STMT(CXXExpansionInitListExpr, {
-  for (Expr *SubExpr : S->getSubExprs())
-    TRY_TO(TraverseStmt(SubExpr));
-})
-DEF_TRAVERSE_STMT(CXXIndeterminateExpansionSelectExpr, {
-  TRY_TO(TraverseStmt(S->getRangeExpr()));
-  TRY_TO(TraverseStmt(S->getIdxExpr()));
-})
-DEF_TRAVERSE_STMT(CXXIterableExpansionSelectExpr, {
-  TRY_TO(TraverseDecl(S->getRangeVar()));
-  TRY_TO(TraverseStmt(S->getImplExpr()));
-})
-DEF_TRAVERSE_STMT(CXXDestructurableExpansionSelectExpr, {
-  TRY_TO(TraverseDecl(S->getDecompositionDecl()));
-  TRY_TO(TraverseStmt(S->getIdxExpr()));
-})
-DEF_TRAVERSE_STMT(CXXExpansionInitListSelectExpr, {
-  TRY_TO(TraverseStmt(S->getRangeExpr()));
-  TRY_TO(TraverseStmt(S->getIdxExpr()));
-})
-DEF_TRAVERSE_STMT(StackLocationExpr, {})
-DEF_TRAVERSE_STMT(ExtractLValueExpr, {
-  TRY_TO(TraverseDecl(S->getValueDecl()));
-})
-DEF_TRAVERSE_STMT(ExplicitlyDependentCallExpr, {
-  TRY_TO(TraverseStmt(S->getSubExpr()));
-})
-DEF_TRAVERSE_STMT(CXXParenListInitExpr, {})
 
 DEF_TRAVERSE_STMT(MaterializeTemporaryExpr, {
   if (S->getLifetimeExtendedTemporaryDecl()) {
@@ -3693,6 +3703,19 @@ bool RecursiveASTVisitor<Derived>::VisitOMPDefaultClause(OMPDefaultClause *) {
 }
 
 template <typename Derived>
+bool RecursiveASTVisitor<Derived>::VisitOMPThreadsetClause(
+    OMPThreadsetClause *) {
+  return true;
+}
+
+template <typename Derived>
+bool RecursiveASTVisitor<Derived>::VisitOMPTransparentClause(
+    OMPTransparentClause *C) {
+  TRY_TO(TraverseStmt(C->getImpexType()));
+  return true;
+}
+
+template <typename Derived>
 bool RecursiveASTVisitor<Derived>::VisitOMPProcBindClause(OMPProcBindClause *) {
   return true;
 }
@@ -3763,7 +3786,8 @@ bool RecursiveASTVisitor<Derived>::VisitOMPOrderedClause(OMPOrderedClause *C) {
 }
 
 template <typename Derived>
-bool RecursiveASTVisitor<Derived>::VisitOMPNowaitClause(OMPNowaitClause *) {
+bool RecursiveASTVisitor<Derived>::VisitOMPNowaitClause(OMPNowaitClause *C) {
+  TRY_TO(TraverseStmt(C->getCondition()));
   return true;
 }
 
@@ -4322,6 +4346,14 @@ bool RecursiveASTVisitor<Derived>::VisitOMPBindClause(OMPBindClause *C) {
 template <typename Derived>
 bool RecursiveASTVisitor<Derived>::VisitOMPXDynCGroupMemClause(
     OMPXDynCGroupMemClause *C) {
+  TRY_TO(VisitOMPClauseWithPreInit(C));
+  TRY_TO(TraverseStmt(C->getSize()));
+  return true;
+}
+
+template <typename Derived>
+bool RecursiveASTVisitor<Derived>::VisitOMPDynGroupprivateClause(
+    OMPDynGroupprivateClause *C) {
   TRY_TO(VisitOMPClauseWithPreInit(C));
   TRY_TO(TraverseStmt(C->getSize()));
   return true;

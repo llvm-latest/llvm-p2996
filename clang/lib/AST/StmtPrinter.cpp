@@ -151,11 +151,11 @@ namespace {
       else StmtVisitor<StmtPrinter>::Visit(S);
     }
 
-    void VisitStmt(Stmt *Node) LLVM_ATTRIBUTE_UNUSED {
+    [[maybe_unused]] void VisitStmt(Stmt *Node) {
       Indent() << "<<unknown stmt type>>" << NL;
     }
 
-    void VisitExpr(Expr *Node) LLVM_ATTRIBUTE_UNUSED {
+    [[maybe_unused]] void VisitExpr(Expr *Node) {
       OS << "<<unknown expr type>>";
     }
 
@@ -489,6 +489,11 @@ void StmtPrinter::VisitBreakStmt(BreakStmt *Node) {
   else
     OS << "break;";
   if (Policy.IncludeNewlines) OS << NL;
+}
+
+void StmtPrinter::VisitDeferStmt(DeferStmt *Node) {
+  Indent() << "_Defer";
+  PrintControlledStmt(Node->getBody());
 }
 
 void StmtPrinter::VisitReturnStmt(ReturnStmt *Node) {
@@ -1685,6 +1690,14 @@ void StmtPrinter::VisitArraySubscriptExpr(ArraySubscriptExpr *Node) {
   OS << "]";
 }
 
+void StmtPrinter::VisitMatrixSingleSubscriptExpr(
+    MatrixSingleSubscriptExpr *Node) {
+  PrintExpr(Node->getBase());
+  OS << "[";
+  PrintExpr(Node->getRowIdx());
+  OS << "]";
+}
+
 void StmtPrinter::VisitMatrixSubscriptExpr(MatrixSubscriptExpr *Node) {
   PrintExpr(Node->getBase());
   OS << "[";
@@ -1808,6 +1821,12 @@ void StmtPrinter::VisitObjCIsaExpr(ObjCIsaExpr *Node) {
 }
 
 void StmtPrinter::VisitExtVectorElementExpr(ExtVectorElementExpr *Node) {
+  PrintExpr(Node->getBase());
+  OS << ".";
+  OS << Node->getAccessor().getName();
+}
+
+void StmtPrinter::VisitMatrixElementExpr(MatrixElementExpr *Node) {
   PrintExpr(Node->getBase());
   OS << ".";
   OS << Node->getAccessor().getName();
@@ -2566,6 +2585,139 @@ void StmtPrinter::VisitCXXUnresolvedConstructExpr(
     OS << ')';
 }
 
+void StmtPrinter::VisitCXXReflectExpr(CXXReflectExpr *S) {
+  // FIXME: Make this better.
+  OS << "^^(...)";
+}
+
+void StmtPrinter::VisitCXXMetafunctionExpr(CXXMetafunctionExpr *S) {
+  OS << "__metafunction(";
+  for (unsigned I = 0; I < S->getNumArgs(); ++I) {
+    PrintExpr(S->getArg(I));
+    if (I + 1 != S->getNumArgs())
+      OS << ", ";
+  }
+  OS << ")";
+}
+
+void StmtPrinter::VisitCXXSpliceExpr(CXXSpliceExpr *S) {
+  OS << "[: ... :]";
+}
+
+void StmtPrinter::VisitCXXDependentMemberSpliceExpr(
+                                              CXXDependentMemberSpliceExpr *S) {
+  Visit(S->getBase());
+  OS << ".";
+  Visit(S->getRHS());
+}
+
+void StmtPrinter::VisitStackLocationExpr(StackLocationExpr *S) {
+  OS << "StackLoc(" << S->getFrameOffset() << ")";
+}
+
+void StmtPrinter::VisitExtractLValueExpr(ExtractLValueExpr *S) {
+  OS << "ExtractLValue(<Decl>)";
+}
+
+void StmtPrinter::VisitExplicitlyDependentCallExpr(
+    ExplicitlyDependentCallExpr *S) {
+  PrintExpr(S->getSubExpr());
+}
+
+void StmtPrinter::VisitCXXIndeterminateExpansionStmt(
+                                          CXXIndeterminateExpansionStmt *Node) {
+  Indent() << "template for (";
+  if (Node->getInit())
+    PrintInitStmt(Node->getInit(), 14);
+  PrintingPolicy SubPolicy(Policy);
+  SubPolicy.SuppressInitializers = true;
+  Node->getExpansionVariable()->print(OS, SubPolicy, IndentLevel);
+  OS << " : ";
+  // TODO(P2996).
+  OS << "<range>"; //PrintExpr(Node->getRange());
+  OS << ")";
+  PrintControlledStmt(Node->getBody());
+}
+
+void StmtPrinter::VisitCXXDestructurableExpansionStmt(
+                                         CXXDestructurableExpansionStmt *Node) {
+  Indent() << "template for (";
+  if (Node->getInit())
+    PrintInitStmt(Node->getInit(), 14);
+  PrintingPolicy SubPolicy(Policy);
+  SubPolicy.SuppressInitializers = true;
+  Node->getExpansionVariable()->print(OS, SubPolicy, IndentLevel);
+  OS << " : ";
+  // TODO(P2996).
+  OS << "<range>"; //PrintExpr(Node->getRange());
+  OS << ")";
+  PrintControlledStmt(Node->getBody());
+}
+
+void StmtPrinter::VisitCXXIterableExpansionStmt(
+                                               CXXIterableExpansionStmt *Node) {
+  Indent() << "template for (";
+  if (Node->getInit())
+    PrintInitStmt(Node->getInit(), 14);
+  PrintingPolicy SubPolicy(Policy);
+  SubPolicy.SuppressInitializers = true;
+  Node->getExpansionVariable()->print(OS, SubPolicy, IndentLevel);
+  OS << " : ";
+  // TODO(P2996).
+  OS << "<range>"; //PrintExpr(Node->getRange());
+  OS << ")";
+  PrintControlledStmt(Node->getBody());
+}
+
+void StmtPrinter::VisitCXXInitListExpansionStmt(
+                                               CXXInitListExpansionStmt *Node) {
+  Indent() << "template for (";
+  if (Node->getInit())
+    PrintInitStmt(Node->getInit(), 14);
+  PrintingPolicy SubPolicy(Policy);
+  SubPolicy.SuppressInitializers = true;
+  Node->getExpansionVariable()->print(OS, SubPolicy, IndentLevel);
+  OS << " : ";
+  // TODO(P2996).
+  OS << "<range>"; //PrintExpr(Node->getRange());
+  OS << ")";
+  PrintControlledStmt(Node->getBody());
+}
+
+void StmtPrinter::VisitCXXExpansionInitListExpr(
+                                               CXXExpansionInitListExpr *Node) {
+  OS << "{";
+
+  unsigned idx = 0;
+  for (auto *SubExpr : Node->getSubExprs()) {
+    if (idx++ > 0)
+      OS << ", ";
+    Visit(SubExpr);
+  }
+
+  OS << "}";
+}
+
+void StmtPrinter::VisitCXXExpansionInitListSelectExpr(
+        CXXExpansionInitListSelectExpr *Node) {
+  OS << Node->getRangeExpr() << "[" << Node->getIdxExpr() << "]";
+}
+
+void StmtPrinter::VisitCXXIterableExpansionSelectExpr(
+        CXXIterableExpansionSelectExpr *Node) {
+  // TODO(P2996): Implement this.
+}
+
+void StmtPrinter::VisitCXXDestructurableExpansionSelectExpr(
+        CXXDestructurableExpansionSelectExpr *Node) {
+  // TODO(P2996): Implement this.
+}
+
+void StmtPrinter::VisitCXXIndeterminateExpansionSelectExpr(
+        CXXIndeterminateExpansionSelectExpr *Node) {
+  // TODO(P2996): Implement this.
+}
+
 void StmtPrinter::VisitCXXDependentScopeMemberExpr(
                                          CXXDependentScopeMemberExpr *Node) {
   if (!Node->isImplicitAccess()) {
@@ -2767,139 +2919,6 @@ void StmtPrinter::VisitDependentCoawaitExpr(DependentCoawaitExpr *S) {
 void StmtPrinter::VisitCoyieldExpr(CoyieldExpr *S) {
   OS << "co_yield ";
   PrintExpr(S->getOperand());
-}
-
-void StmtPrinter::VisitCXXReflectExpr(CXXReflectExpr *S) {
-  // FIXME: Make this better.
-  OS << "^^(...)";
-}
-
-void StmtPrinter::VisitCXXMetafunctionExpr(CXXMetafunctionExpr *S) {
-  OS << "__metafunction(";
-  for (unsigned I = 0; I < S->getNumArgs(); ++I) {
-    PrintExpr(S->getArg(I));
-    if (I + 1 != S->getNumArgs())
-      OS << ", ";
-  }
-  OS << ")";
-}
-
-void StmtPrinter::VisitCXXSpliceExpr(CXXSpliceExpr *S) {
-  OS << "[: ... :]";
-}
-
-void StmtPrinter::VisitCXXDependentMemberSpliceExpr(
-                                              CXXDependentMemberSpliceExpr *S) {
-  Visit(S->getBase());
-  OS << ".";
-  Visit(S->getRHS());
-}
-
-void StmtPrinter::VisitStackLocationExpr(StackLocationExpr *S) {
-  OS << "StackLoc(" << S->getFrameOffset() << ")";
-}
-
-void StmtPrinter::VisitExtractLValueExpr(ExtractLValueExpr *S) {
-  OS << "ExtractLValue(<Decl>)";
-}
-
-void StmtPrinter::VisitExplicitlyDependentCallExpr(
-    ExplicitlyDependentCallExpr *S) {
-  PrintExpr(S->getSubExpr());
-}
-
-void StmtPrinter::VisitCXXIndeterminateExpansionStmt(
-                                          CXXIndeterminateExpansionStmt *Node) {
-  Indent() << "template for (";
-  if (Node->getInit())
-    PrintInitStmt(Node->getInit(), 14);
-  PrintingPolicy SubPolicy(Policy);
-  SubPolicy.SuppressInitializers = true;
-  Node->getExpansionVariable()->print(OS, SubPolicy, IndentLevel);
-  OS << " : ";
-  // TODO(P2996).
-  OS << "<range>"; //PrintExpr(Node->getRange());
-  OS << ")";
-  PrintControlledStmt(Node->getBody());
-}
-
-void StmtPrinter::VisitCXXDestructurableExpansionStmt(
-                                         CXXDestructurableExpansionStmt *Node) {
-  Indent() << "template for (";
-  if (Node->getInit())
-    PrintInitStmt(Node->getInit(), 14);
-  PrintingPolicy SubPolicy(Policy);
-  SubPolicy.SuppressInitializers = true;
-  Node->getExpansionVariable()->print(OS, SubPolicy, IndentLevel);
-  OS << " : ";
-  // TODO(P2996).
-  OS << "<range>"; //PrintExpr(Node->getRange());
-  OS << ")";
-  PrintControlledStmt(Node->getBody());
-}
-
-void StmtPrinter::VisitCXXIterableExpansionStmt(
-                                               CXXIterableExpansionStmt *Node) {
-  Indent() << "template for (";
-  if (Node->getInit())
-    PrintInitStmt(Node->getInit(), 14);
-  PrintingPolicy SubPolicy(Policy);
-  SubPolicy.SuppressInitializers = true;
-  Node->getExpansionVariable()->print(OS, SubPolicy, IndentLevel);
-  OS << " : ";
-  // TODO(P2996).
-  OS << "<range>"; //PrintExpr(Node->getRange());
-  OS << ")";
-  PrintControlledStmt(Node->getBody());
-}
-
-void StmtPrinter::VisitCXXInitListExpansionStmt(
-                                               CXXInitListExpansionStmt *Node) {
-  Indent() << "template for (";
-  if (Node->getInit())
-    PrintInitStmt(Node->getInit(), 14);
-  PrintingPolicy SubPolicy(Policy);
-  SubPolicy.SuppressInitializers = true;
-  Node->getExpansionVariable()->print(OS, SubPolicy, IndentLevel);
-  OS << " : ";
-  // TODO(P2996).
-  OS << "<range>"; //PrintExpr(Node->getRange());
-  OS << ")";
-  PrintControlledStmt(Node->getBody());
-}
-
-void StmtPrinter::VisitCXXExpansionInitListExpr(
-                                               CXXExpansionInitListExpr *Node) {
-  OS << "{";
-
-  unsigned idx = 0;
-  for (auto *SubExpr : Node->getSubExprs()) {
-    if (idx++ > 0)
-      OS << ", ";
-    Visit(SubExpr);
-  }
-
-  OS << "}";
-}
-
-void StmtPrinter::VisitCXXExpansionInitListSelectExpr(
-        CXXExpansionInitListSelectExpr *Node) {
-  OS << Node->getRangeExpr() << "[" << Node->getIdxExpr() << "]";
-}
-
-void StmtPrinter::VisitCXXIterableExpansionSelectExpr(
-        CXXIterableExpansionSelectExpr *Node) {
-  // TODO(P2996): Implement this.
-}
-
-void StmtPrinter::VisitCXXDestructurableExpansionSelectExpr(
-        CXXDestructurableExpansionSelectExpr *Node) {
-  // TODO(P2996): Implement this.
-}
-
-void StmtPrinter::VisitCXXIndeterminateExpansionSelectExpr(
-        CXXIndeterminateExpansionSelectExpr *Node) {
-  // TODO(P2996): Implement this.
 }
 
 // Obj-C

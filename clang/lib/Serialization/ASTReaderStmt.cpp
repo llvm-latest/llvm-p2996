@@ -335,6 +335,12 @@ void ASTStmtReader::VisitContinueStmt(ContinueStmt *S) {
 
 void ASTStmtReader::VisitBreakStmt(BreakStmt *S) { VisitLoopControlStmt(S); }
 
+void ASTStmtReader::VisitDeferStmt(DeferStmt *S) {
+  VisitStmt(S);
+  S->setDeferLoc(readSourceLocation());
+  S->setBody(Record.readSubStmt());
+}
+
 void ASTStmtReader::VisitReturnStmt(ReturnStmt *S) {
   VisitStmt(S);
 
@@ -496,6 +502,39 @@ void ASTStmtReader::VisitCoyieldExpr(CoyieldExpr *E) {
   E->OpaqueValue = cast_or_null<OpaqueValueExpr>(Record.readSubStmt());
 }
 
+void ASTStmtReader::VisitDependentCoawaitExpr(DependentCoawaitExpr *E) {
+  VisitExpr(E);
+  E->KeywordLoc = readSourceLocation();
+  for (auto &SubExpr: E->SubExprs)
+    SubExpr = Record.readSubStmt();
+}
+
+void ASTStmtReader::VisitCapturedStmt(CapturedStmt *S) {
+  VisitStmt(S);
+  Record.skipInts(1);
+  S->setCapturedDecl(readDeclAs<CapturedDecl>());
+  S->setCapturedRegionKind(static_cast<CapturedRegionKind>(Record.readInt()));
+  S->setCapturedRecordDecl(readDeclAs<RecordDecl>());
+
+  // Capture inits
+  for (CapturedStmt::capture_init_iterator I = S->capture_init_begin(),
+                                           E = S->capture_init_end();
+       I != E; ++I)
+    *I = Record.readSubExpr();
+
+  // Body
+  S->setCapturedStmt(Record.readSubStmt());
+  S->getCapturedDecl()->setBody(S->getCapturedStmt());
+
+  // Captures
+  for (auto &I : S->captures()) {
+    I.VarAndKind.setPointer(readDeclAs<VarDecl>());
+    I.VarAndKind.setInt(
+        static_cast<CapturedStmt::VariableCaptureKind>(Record.readInt()));
+    I.Loc = readSourceLocation();
+  }
+}
+
 void ASTStmtReader::VisitCXXReflectExpr(CXXReflectExpr *E) {
   VisitExpr(E);
   E->setOperatorLoc(Record.readSourceLocation());
@@ -652,39 +691,6 @@ void ASTStmtReader::VisitCXXExpansionInitListExpr(CXXExpansionInitListExpr *E) {
   for (size_t k = 0; k < E->NumSubExprs; ++k)
     SubExprs[k] = Record.readExpr();
   E->SubExprs = SubExprs;
-}
-
-void ASTStmtReader::VisitDependentCoawaitExpr(DependentCoawaitExpr *E) {
-  VisitExpr(E);
-  E->KeywordLoc = readSourceLocation();
-  for (auto &SubExpr: E->SubExprs)
-    SubExpr = Record.readSubStmt();
-}
-
-void ASTStmtReader::VisitCapturedStmt(CapturedStmt *S) {
-  VisitStmt(S);
-  Record.skipInts(1);
-  S->setCapturedDecl(readDeclAs<CapturedDecl>());
-  S->setCapturedRegionKind(static_cast<CapturedRegionKind>(Record.readInt()));
-  S->setCapturedRecordDecl(readDeclAs<RecordDecl>());
-
-  // Capture inits
-  for (CapturedStmt::capture_init_iterator I = S->capture_init_begin(),
-                                           E = S->capture_init_end();
-       I != E; ++I)
-    *I = Record.readSubExpr();
-
-  // Body
-  S->setCapturedStmt(Record.readSubStmt());
-  S->getCapturedDecl()->setBody(S->getCapturedStmt());
-
-  // Captures
-  for (auto &I : S->captures()) {
-    I.VarAndKind.setPointer(readDeclAs<VarDecl>());
-    I.VarAndKind.setInt(
-        static_cast<CapturedStmt::VariableCaptureKind>(Record.readInt()));
-    I.Loc = readSourceLocation();
-  }
 }
 
 void ASTStmtReader::VisitSYCLKernelCallStmt(SYCLKernelCallStmt *S) {
@@ -1120,6 +1126,14 @@ void ASTStmtReader::VisitArraySubscriptExpr(ArraySubscriptExpr *E) {
   E->setRBracketLoc(readSourceLocation());
 }
 
+void ASTStmtReader::VisitMatrixSingleSubscriptExpr(
+    MatrixSingleSubscriptExpr *E) {
+  VisitExpr(E);
+  E->setBase(Record.readSubExpr());
+  E->setRowIdx(Record.readSubExpr());
+  E->setRBracketLoc(readSourceLocation());
+}
+
 void ASTStmtReader::VisitMatrixSubscriptExpr(MatrixSubscriptExpr *E) {
   VisitExpr(E);
   E->setBase(Record.readSubExpr());
@@ -1369,6 +1383,13 @@ void ASTStmtReader::VisitCompoundLiteralExpr(CompoundLiteralExpr *E) {
 }
 
 void ASTStmtReader::VisitExtVectorElementExpr(ExtVectorElementExpr *E) {
+  VisitExpr(E);
+  E->setBase(Record.readSubExpr());
+  E->setAccessor(Record.readIdentifier());
+  E->setAccessorLoc(readSourceLocation());
+}
+
+void ASTStmtReader::VisitMatrixElementExpr(MatrixElementExpr *E) {
   VisitExpr(E);
   E->setBase(Record.readSubExpr());
   E->setAccessor(Record.readIdentifier());
@@ -3303,6 +3324,10 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
       S = new (Context) BreakStmt(Empty);
       break;
 
+    case STMT_DEFER:
+      S = DeferStmt::CreateEmpty(Context, Empty);
+      break;
+
     case STMT_RETURN:
       S = ReturnStmt::CreateEmpty(
           Context, /* HasNRVOCandidate=*/Record[ASTStmtReader::NumStmtFields]);
@@ -3514,6 +3539,10 @@ Stmt *ASTReader::ReadStmtFromStream(ModuleFile &F) {
 
     case EXPR_EXT_VECTOR_ELEMENT:
       S = new (Context) ExtVectorElementExpr(Empty);
+      break;
+
+    case EXPR_MATRIX_ELEMENT:
+      S = new (Context) MatrixElementExpr(Empty);
       break;
 
     case EXPR_INIT_LIST:

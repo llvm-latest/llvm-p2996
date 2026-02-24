@@ -151,14 +151,14 @@ struct UnsafeQualTypeDenseMapInfo {
 };
 
 /// An ID number that refers to a macro in an AST file.
-using MacroID = uint32_t;
+using MacroID = uint64_t;
 
 /// A global ID number that refers to a macro in an AST file.
-using GlobalMacroID = uint32_t;
+using GlobalMacroID = uint64_t;
 
 /// A local to a module ID number that refers to a macro in an
 /// AST file.
-using LocalMacroID = uint32_t;
+using LocalMacroID = uint64_t;
 
 /// The number of predefined macro IDs.
 const unsigned int NUM_PREDEF_MACRO_IDS = 1;
@@ -179,7 +179,7 @@ using CXXCtorInitializersID = uint32_t;
 
 /// An ID number that refers to an entity in the detailed
 /// preprocessing record.
-using PreprocessedEntityID = uint32_t;
+using PreprocessedEntityID = uint64_t;
 
 /// An ID number that refers to a submodule in a module file.
 using SubmoduleID = uint32_t;
@@ -745,6 +745,9 @@ enum ASTRecordTypes {
   UPDATE_MODULE_LOCAL_VISIBLE = 76,
 
   UPDATE_TU_LOCAL_VISIBLE = 77,
+
+  /// Record code for #pragma clang riscv intrinsic vector.
+  RISCV_VECTOR_INTRINSICS_PRAGMA = 78,
 };
 
 /// Record types used within a source manager block.
@@ -1702,6 +1705,9 @@ enum StmtCode {
   /// An ExtVectorElementExpr record.
   EXPR_EXT_VECTOR_ELEMENT,
 
+  /// A MatrixElementExpr record.
+  EXPR_MATRIX_ELEMENT,
+
   /// An InitListExpr record.
   EXPR_INIT_LIST,
 
@@ -1934,6 +1940,26 @@ enum StmtCode {
   EXPR_CONCEPT_SPECIALIZATION,            // ConceptSpecializationExpr
   EXPR_REQUIRES,                          // RequiresExpr
 
+  // Reflection
+  EXPR_REFLECT,
+  EXPR_METAFUNCTION,
+  EXPR_SPLICE,
+  EXPR_DEPENDENT_MEMBER_SPLICE,
+  EXPR_STACK_LOCATION,
+  EXPR_EXTRACT_LVALUE,
+  EXPR_EXPLICITLY_DEPENDENT_CALL,
+
+  // C++2c expansion statements (P1306)
+  STMT_INDETERMINATE_EXPANSION,
+  STMT_ITERABLE_EXPANSION,
+  STMT_DESTRUCTURABLE_EXPANSION,
+  STMT_INIT_LIST_EXPANSION,
+  EXPR_INDETERMINATE_EXPANSION_SELECT,
+  EXPR_ITERABLE_EXPANSION_SELECT,
+  EXPR_DESTRUCTURABLE_EXPANSION_SELECT,
+  EXPR_INIT_LIST_EXPANSION_SELECT,
+  EXPR_EXPANSION_INIT_LIST,
+
   // CUDA
   EXPR_CUDA_KERNEL_CALL, // CUDAKernelCallExpr
 
@@ -2044,26 +2070,6 @@ enum StmtCode {
   EXPR_COYIELD,
   EXPR_DEPENDENT_COAWAIT,
 
-  // C++2c reflection (P2996)
-  EXPR_REFLECT,
-  EXPR_METAFUNCTION,
-  EXPR_SPLICE,
-  EXPR_DEPENDENT_MEMBER_SPLICE,
-  EXPR_STACK_LOCATION,
-  EXPR_EXTRACT_LVALUE,
-  EXPR_EXPLICITLY_DEPENDENT_CALL,
-
-  // C++2c expansion statements (P1306)
-  STMT_INDETERMINATE_EXPANSION,
-  STMT_ITERABLE_EXPANSION,
-  STMT_DESTRUCTURABLE_EXPANSION,
-  STMT_INIT_LIST_EXPANSION,
-  EXPR_INDETERMINATE_EXPANSION_SELECT,
-  EXPR_ITERABLE_EXPANSION_SELECT,
-  EXPR_DESTRUCTURABLE_EXPANSION_SELECT,
-  EXPR_INIT_LIST_EXPANSION_SELECT,
-  EXPR_EXPANSION_INIT_LIST,
-
   // FixedPointLiteral
   EXPR_FIXEDPOINT_LITERAL,
 
@@ -2090,6 +2096,7 @@ enum StmtCode {
   // HLSL Constructs
   EXPR_HLSL_OUT_ARG,
 
+  STMT_DEFER,
 };
 
 /// The kinds of designators that can occur in a

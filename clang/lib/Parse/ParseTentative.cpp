@@ -14,6 +14,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "clang/Parse/Parser.h"
+#include "clang/Parse/RAIIObjectsForParser.h"
 #include "clang/Sema/ParsedTemplate.h"
 using namespace clang;
 
@@ -85,6 +86,21 @@ bool Parser::isCXXDeclarationStatement(
     [[fallthrough]];
     // simple-declaration
   default:
+
+    if (DisambiguatingWithExpression) {
+      TentativeParsingAction TPA(*this, /*Unannotated=*/true);
+      // Skip early access checks to support edge cases like extern declarations
+      // involving private types. Tokens are unannotated by reverting so that
+      // access integrity is verified during the subsequent type-lookup phase.
+      SuppressAccessChecks AccessExporter(*this, /*activate=*/true);
+      if (isCXXSimpleDeclaration(/*AllowForRangeDecl=*/false)) {
+        // Do not annotate the tokens, otherwise access will be neglected later.
+        TPA.Revert();
+        return true;
+      }
+      TPA.Commit();
+      return false;
+    }
     return isCXXSimpleDeclaration(/*AllowForRangeDecl=*/false);
   }
 }
@@ -1076,8 +1092,7 @@ Parser::isCXXDeclarationSpecifier(ImplicitTypenameContext AllowImplicitTypename,
       return TPResult::False;
     }
 
-    if (Tok.is(tok::identifier) && Next.isNot(tok::coloncolon) &&
-        Next.isNot(tok::less)) {
+    if (Next.isNoneOf(tok::coloncolon, tok::less, tok::colon)) {
       // Determine whether this is a valid expression. If not, we will hit
       // a parse error one way or another. In that case, tell the caller that
       // this is ambiguous. Typo-correct to type and expression keywords and
@@ -1189,6 +1204,7 @@ Parser::isCXXDeclarationSpecifier(ImplicitTypenameContext AllowImplicitTypename,
   case tok::kw_inline:
   case tok::kw_virtual:
   case tok::kw_explicit:
+  case tok::kw__Noreturn:
 
     // Modules
   case tok::kw___module_private__:
@@ -1243,8 +1259,14 @@ Parser::isCXXDeclarationSpecifier(ImplicitTypenameContext AllowImplicitTypename,
     // GNU
   case tok::kw_restrict:
   case tok::kw__Complex:
+  case tok::kw__Imaginary:
   case tok::kw___attribute:
   case tok::kw___auto_type:
+    return TPResult::True;
+
+    // OverflowBehaviorTypes
+  case tok::kw___ob_wrap:
+  case tok::kw___ob_trap:
     return TPResult::True;
 
     // Microsoft

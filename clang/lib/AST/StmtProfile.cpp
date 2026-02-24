@@ -323,6 +323,8 @@ void StmtProfiler::VisitReturnStmt(const ReturnStmt *S) {
   VisitStmt(S);
 }
 
+void StmtProfiler::VisitDeferStmt(const DeferStmt *S) { VisitStmt(S); }
+
 void StmtProfiler::VisitGCCAsmStmt(const GCCAsmStmt *S) {
   VisitStmt(S);
   ID.AddBoolean(S->isVolatile());
@@ -546,6 +548,14 @@ void OMPClauseProfiler::VisitOMPNocontextClause(const OMPNocontextClause *C) {
 
 void OMPClauseProfiler::VisitOMPDefaultClause(const OMPDefaultClause *C) { }
 
+void OMPClauseProfiler::VisitOMPThreadsetClause(const OMPThreadsetClause *C) {}
+
+void OMPClauseProfiler::VisitOMPTransparentClause(
+    const OMPTransparentClause *C) {
+  if (C->getImpexType())
+    Profiler->VisitStmt(C->getImpexType());
+}
+
 void OMPClauseProfiler::VisitOMPProcBindClause(const OMPProcBindClause *C) { }
 
 void OMPClauseProfiler::VisitOMPUnifiedAddressClause(
@@ -585,7 +595,10 @@ void OMPClauseProfiler::VisitOMPOrderedClause(const OMPOrderedClause *C) {
     Profiler->VisitStmt(Num);
 }
 
-void OMPClauseProfiler::VisitOMPNowaitClause(const OMPNowaitClause *) {}
+void OMPClauseProfiler::VisitOMPNowaitClause(const OMPNowaitClause *C) {
+  if (C->getCondition())
+    Profiler->VisitStmt(C->getCondition());
+}
 
 void OMPClauseProfiler::VisitOMPUntiedClause(const OMPUntiedClause *) {}
 
@@ -961,6 +974,12 @@ void OMPClauseProfiler::VisitOMPXDynCGroupMemClause(
     const OMPXDynCGroupMemClause *C) {
   VisitOMPClauseWithPreInit(C);
   if (Expr *Size = C->getSize())
+    Profiler->VisitStmt(Size);
+}
+void OMPClauseProfiler::VisitOMPDynGroupprivateClause(
+    const OMPDynGroupprivateClause *C) {
+  VisitOMPClauseWithPreInit(C);
+  if (auto *Size = C->getSize())
     Profiler->VisitStmt(Size);
 }
 void OMPClauseProfiler::VisitOMPDoacrossClause(const OMPDoacrossClause *C) {
@@ -1497,6 +1516,11 @@ void StmtProfiler::VisitArraySubscriptExpr(const ArraySubscriptExpr *S) {
   VisitExpr(S);
 }
 
+void StmtProfiler::VisitMatrixSingleSubscriptExpr(
+    const MatrixSingleSubscriptExpr *S) {
+  VisitExpr(S);
+}
+
 void StmtProfiler::VisitMatrixSubscriptExpr(const MatrixSubscriptExpr *S) {
   VisitExpr(S);
 }
@@ -1652,6 +1676,11 @@ void StmtProfiler::VisitImplicitValueInitExpr(const ImplicitValueInitExpr *S) {
 }
 
 void StmtProfiler::VisitExtVectorElementExpr(const ExtVectorElementExpr *S) {
+  VisitExpr(S);
+  VisitName(&S->getAccessor());
+}
+
+void StmtProfiler::VisitMatrixElementExpr(const MatrixElementExpr *S) {
   VisitExpr(S);
   VisitName(&S->getAccessor());
 }
@@ -2164,6 +2193,87 @@ StmtProfiler::VisitLambdaExpr(const LambdaExpr *S) {
   ID.AddInteger(Hasher.CalculateHash());
 }
 
+void StmtProfiler::VisitCXXReflectExpr(const CXXReflectExpr *E) {
+  VisitExpr(E);
+
+  if (E->hasDependentSubExpr()) {
+    VisitExpr(E->getDependentSubExpr());
+  } else {
+    E->getReflection().Profile(ID);
+  }
+}
+
+void StmtProfiler::VisitCXXMetafunctionExpr(const CXXMetafunctionExpr *E) {
+  VisitExpr(E);
+}
+
+void StmtProfiler::VisitCXXSpliceExpr(const CXXSpliceExpr *E) {
+  VisitExpr(E);
+}
+
+void StmtProfiler::VisitCXXDependentMemberSpliceExpr(
+                                        const CXXDependentMemberSpliceExpr *E) {
+  VisitExpr(E);
+}
+
+void StmtProfiler::VisitStackLocationExpr(const StackLocationExpr *E) {
+  VisitExpr(E);
+}
+
+void StmtProfiler::VisitExtractLValueExpr(const ExtractLValueExpr *E) {
+  VisitDecl(E->getValueDecl());
+}
+
+void StmtProfiler::VisitExplicitlyDependentCallExpr(
+    const ExplicitlyDependentCallExpr *E) {
+  VisitExpr(E);
+}
+
+void StmtProfiler::VisitCXXIndeterminateExpansionStmt(
+                                       const CXXIndeterminateExpansionStmt *S) {
+  VisitStmt(S);
+}
+
+void StmtProfiler::VisitCXXIterableExpansionStmt(
+                                            const CXXIterableExpansionStmt *S) {
+  VisitStmt(S);
+}
+
+void StmtProfiler::VisitCXXDestructurableExpansionStmt(
+                                      const CXXDestructurableExpansionStmt *S) {
+  VisitStmt(S);
+}
+
+void StmtProfiler::VisitCXXInitListExpansionStmt(
+                                            const CXXInitListExpansionStmt *S) {
+  VisitStmt(S);
+}
+
+void StmtProfiler::VisitCXXIndeterminateExpansionSelectExpr(
+                                 const CXXIndeterminateExpansionSelectExpr *E) {
+  VisitExpr(E);
+}
+
+void StmtProfiler::VisitCXXIterableExpansionSelectExpr(
+                                      const CXXIterableExpansionSelectExpr *E) {
+  VisitExpr(E);
+}
+
+void StmtProfiler::VisitCXXDestructurableExpansionSelectExpr(
+                                const CXXDestructurableExpansionSelectExpr *E) {
+  VisitExpr(E);
+}
+
+void StmtProfiler::VisitCXXExpansionInitListSelectExpr(
+                                      const CXXExpansionInitListSelectExpr *E) {
+  VisitExpr(E);
+}
+
+void StmtProfiler::VisitCXXExpansionInitListExpr(
+                                            const CXXExpansionInitListExpr *E) {
+  VisitExpr(E);
+}
+
 void
 StmtProfiler::VisitCXXScalarValueInitExpr(const CXXScalarValueInitExpr *S) {
   VisitExpr(S);
@@ -2380,87 +2490,6 @@ void StmtProfiler::VisitCoyieldExpr(const CoyieldExpr *S) {
 }
 
 void StmtProfiler::VisitOpaqueValueExpr(const OpaqueValueExpr *E) {
-  VisitExpr(E);
-}
-
-void StmtProfiler::VisitCXXReflectExpr(const CXXReflectExpr *E) {
-  VisitExpr(E);
-
-  if (E->hasDependentSubExpr()) {
-    VisitExpr(E->getDependentSubExpr());
-  } else {
-    E->getReflection().Profile(ID);
-  }
-}
-
-void StmtProfiler::VisitCXXMetafunctionExpr(const CXXMetafunctionExpr *E) {
-  VisitExpr(E);
-}
-
-void StmtProfiler::VisitCXXSpliceExpr(const CXXSpliceExpr *E) {
-  VisitExpr(E);
-}
-
-void StmtProfiler::VisitCXXDependentMemberSpliceExpr(
-                                        const CXXDependentMemberSpliceExpr *E) {
-  VisitExpr(E);
-}
-
-void StmtProfiler::VisitStackLocationExpr(const StackLocationExpr *E) {
-  VisitExpr(E);
-}
-
-void StmtProfiler::VisitExtractLValueExpr(const ExtractLValueExpr *E) {
-  VisitDecl(E->getValueDecl());
-}
-
-void StmtProfiler::VisitExplicitlyDependentCallExpr(
-    const ExplicitlyDependentCallExpr *E) {
-  VisitExpr(E);
-}
-
-void StmtProfiler::VisitCXXIndeterminateExpansionStmt(
-                                       const CXXIndeterminateExpansionStmt *S) {
-  VisitStmt(S);
-}
-
-void StmtProfiler::VisitCXXIterableExpansionStmt(
-                                            const CXXIterableExpansionStmt *S) {
-  VisitStmt(S);
-}
-
-void StmtProfiler::VisitCXXDestructurableExpansionStmt(
-                                      const CXXDestructurableExpansionStmt *S) {
-  VisitStmt(S);
-}
-
-void StmtProfiler::VisitCXXInitListExpansionStmt(
-                                            const CXXInitListExpansionStmt *S) {
-  VisitStmt(S);
-}
-
-void StmtProfiler::VisitCXXIndeterminateExpansionSelectExpr(
-                                 const CXXIndeterminateExpansionSelectExpr *E) {
-  VisitExpr(E);
-}
-
-void StmtProfiler::VisitCXXIterableExpansionSelectExpr(
-                                      const CXXIterableExpansionSelectExpr *E) {
-  VisitExpr(E);
-}
-
-void StmtProfiler::VisitCXXDestructurableExpansionSelectExpr(
-                                const CXXDestructurableExpansionSelectExpr *E) {
-  VisitExpr(E);
-}
-
-void StmtProfiler::VisitCXXExpansionInitListSelectExpr(
-                                      const CXXExpansionInitListSelectExpr *E) {
-  VisitExpr(E);
-}
-
-void StmtProfiler::VisitCXXExpansionInitListExpr(
-                                            const CXXExpansionInitListExpr *E) {
   VisitExpr(E);
 }
 

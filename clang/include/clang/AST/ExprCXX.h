@@ -50,6 +50,7 @@
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/STLExtras.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/ADT/TypeSwitch.h"
 #include "llvm/ADT/iterator_range.h"
 #include "llvm/Support/AlignOf.h"
 #include "llvm/Support/Casting.h"
@@ -986,8 +987,7 @@ public:
   }
 
   const_child_range children() const {
-    auto Children = const_cast<MSPropertyRefExpr *>(this)->children();
-    return const_child_range(Children.begin(), Children.end());
+    return const_cast<MSPropertyRefExpr *>(this)->children();
   }
 
   static bool classof(const Stmt *T) {
@@ -1713,12 +1713,10 @@ public:
   }
 
   bool isImmediateEscalating() const {
-    // todo [merge:yukino:maybe-revert]
     return ExprBits.IsImmediateEscalating;
   }
 
   void setIsImmediateEscalating(bool Set) {
-    // todo [merge:yukino:maybe-revert]
     ExprBits.IsImmediateEscalating = Set;
   }
 
@@ -1751,8 +1749,7 @@ public:
   }
 
   const_child_range children() const {
-    auto Children = const_cast<CXXConstructExpr *>(this)->children();
-    return const_child_range(Children.begin(), Children.end());
+    return const_cast<CXXConstructExpr *>(this)->children();
   }
 };
 
@@ -5511,8 +5508,12 @@ public:
   }
 };
 
-/// Represents a C++2c reflect expression (P2996). The operand of the expression
-/// is either a type, an expression, a template-name, or a namespace.
+/// Represents a C++26 reflect expression [expr.reflect]. The operand of the
+/// expression is either:
+///  - :: (global namespace),
+///  - a reflection-name,
+///  - a type-id, or
+///  - an id-expression.
 class CXXReflectExpr : public Expr {
   enum class OperandKind {
     Unset,

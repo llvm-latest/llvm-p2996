@@ -303,8 +303,7 @@ bool TypeSpecTypeLoc::isKind(const TypeLoc &TL) {
 }
 
 bool TagTypeLoc::isDefinition() const {
-  return getTypePtr()->isTagOwned() &&
-         getOriginalDecl()->isCompleteDefinition();
+  return getTypePtr()->isTagOwned() && getDecl()->isCompleteDefinition();
 }
 
 // Reimplemented to account for GNU/C++ extension
@@ -600,6 +599,10 @@ SourceRange BTFTagAttributedTypeLoc::getLocalSourceRange() const {
   return getAttr() ? getAttr()->getRange() : SourceRange();
 }
 
+SourceRange OverflowBehaviorTypeLoc::getLocalSourceRange() const {
+  return SourceRange();
+}
+
 void TypeOfTypeLoc::initializeLocal(ASTContext &Context,
                                        SourceLocation Loc) {
   TypeofLikeTypeLoc<TypeOfTypeLoc, TypeOfType, TypeOfTypeLocInfo>
@@ -855,6 +858,10 @@ namespace {
     }
 
     TypeLoc VisitBTFTagAttributedTypeLoc(BTFTagAttributedTypeLoc T) {
+      return Visit(T.getWrappedLoc());
+    }
+
+    TypeLoc VisitOverflowBehaviorTypeLoc(OverflowBehaviorTypeLoc T) {
       return Visit(T.getWrappedLoc());
     }
 

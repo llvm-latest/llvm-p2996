@@ -592,11 +592,9 @@ public:
               TNK_Type_template, SourceLocation{}, SourceLocation{},
               ParsedTArgs, false, CleanupList);
 
-        MTP.push_back(
-                S.ActOnTemplateParameterList(0, SourceLocation{},
-                                             SourceLocation{}, SourceLocation{},
-                                             std::nullopt, SourceLocation{},
-                                             nullptr));
+        MTP.push_back(S.ActOnTemplateParameterList(
+            0, SourceLocation{}, SourceLocation{}, SourceLocation{},
+            ArrayRef<NamedDecl *>{}, SourceLocation{}, nullptr));
 
         NewDeclResult = S.ActOnClassTemplateSpecialization(
                 &ClsScope, TypeSpec, TagUseKind::Definition, DefinitionLoc,
@@ -649,8 +647,7 @@ public:
     // Start the new definition.
     S.ActOnTagStartDefinition(&ClsScope, NewDecl);
     S.ActOnStartCXXMemberDeclarations(&ClsScope, NewDecl, SourceLocation{},
-                                      false, false, SourceLocation{},
-                                      SourceLocation{}, SourceLocation{});
+                                      false, false, SourceLocation{});
 
     // Derive member visibility.
     AccessSpecifier MemberAS = AS_public;

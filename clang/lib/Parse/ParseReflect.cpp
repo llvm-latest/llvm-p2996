@@ -1,6 +1,4 @@
-//===--- ParseReflect.cpp - C++2c Reflection Parsing (P2996) --------------===//
-//
-// Copyright 2024 Bloomberg Finance L.P.
+//===--- ParseReflect.cpp - C++26 Reflection Parsing ---------------------===//
 //
 // Part of the LLVM Project, under the Apache License v2.0 with LLVM Exceptions.
 // See https://llvm.org/LICENSE.txt for license information.

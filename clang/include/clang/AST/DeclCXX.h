@@ -1272,6 +1272,12 @@ public:
   /// Determine whether this class has any variant members.
   bool hasVariantMembers() const { return data().HasVariantMembers; }
 
+  /// Returns whether the pointer fields in this class should have pointer field
+  /// protection (PFP) by default, either because of an attribute, the
+  /// -fexperimental-pointer-field-protection-abi compiler flag or inheritance
+  /// from a base or member with PFP.
+  bool isPFPType() const { return data().IsPFPType; }
+
   /// Determine whether this class has a trivial default constructor
   /// (C++11 [class.ctor]p5).
   bool hasTrivialDefaultConstructor() const {
@@ -2909,8 +2915,6 @@ class CXXDestructorDecl : public CXXMethodDecl {
 
   // FIXME: Don't allocate storage for these except in the first declaration
   // of a virtual destructor.
-  FunctionDecl *OperatorDelete = nullptr;
-  FunctionDecl *OperatorGlobalDelete = nullptr;
   Expr *OperatorDeleteThisArg = nullptr;
 
   CXXDestructorDecl(ASTContext &C, CXXRecordDecl *RD, SourceLocation StartLoc,
@@ -2937,14 +2941,12 @@ public:
 
   void setOperatorDelete(FunctionDecl *OD, Expr *ThisArg);
   void setOperatorGlobalDelete(FunctionDecl *OD);
-
-  const FunctionDecl *getOperatorDelete() const {
-    return getCanonicalDecl()->OperatorDelete;
-  }
-
-  const FunctionDecl *getOperatorGlobalDelete() const {
-    return getCanonicalDecl()->OperatorGlobalDelete;
-  }
+  void setOperatorArrayDelete(FunctionDecl *OD);
+  void setGlobalOperatorArrayDelete(FunctionDecl *OD);
+  const FunctionDecl *getOperatorDelete() const;
+  const FunctionDecl *getOperatorGlobalDelete() const;
+  const FunctionDecl *getArrayOperatorDelete() const;
+  const FunctionDecl *getGlobalArrayOperatorDelete() const;
 
   Expr *getOperatorDeleteThisArg() const {
     return getCanonicalDecl()->OperatorDeleteThisArg;
@@ -3906,7 +3908,7 @@ public:
 
 public:
   EnumDecl *getEnumDecl() const {
-    return EnumType->getType()->castAs<clang::EnumType>()->getOriginalDecl();
+    return EnumType->getType()->castAs<clang::EnumType>()->getDecl();
   }
 
   static UsingEnumDecl *Create(ASTContext &C, DeclContext *DC,

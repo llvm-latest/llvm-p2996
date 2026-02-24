@@ -2449,6 +2449,7 @@ bool CXXNameMangler::mangleUnresolvedTypeOrSimpleId(QualType Ty,
   case Type::Paren:
   case Type::Attributed:
   case Type::BTFTagAttributed:
+  case Type::OverflowBehavior:
   case Type::HLSLAttributedResource:
   case Type::HLSLInlineSpirv:
   case Type::Auto:
@@ -2530,7 +2531,7 @@ bool CXXNameMangler::mangleUnresolvedTypeOrSimpleId(QualType Ty,
   case Type::Enum:
   case Type::Record:
     mangleSourceNameWithAbiTags(
-        cast<TagType>(Ty)->getOriginalDecl()->getDefinitionOrSelf());
+        cast<TagType>(Ty)->getDecl()->getDefinitionOrSelf());
     break;
 
   case Type::TemplateSpecialization: {
@@ -2595,9 +2596,8 @@ bool CXXNameMangler::mangleUnresolvedTypeOrSimpleId(QualType Ty,
   }
 
   case Type::InjectedClassName:
-    mangleSourceNameWithAbiTags(cast<InjectedClassNameType>(Ty)
-                                    ->getOriginalDecl()
-                                    ->getDefinitionOrSelf());
+    mangleSourceNameWithAbiTags(
+        cast<InjectedClassNameType>(Ty)->getDecl()->getDefinitionOrSelf());
     break;
 
   case Type::DependentName:
@@ -3839,7 +3839,7 @@ void CXXNameMangler::mangleType(const RecordType *T) {
   mangleType(static_cast<const TagType*>(T));
 }
 void CXXNameMangler::mangleType(const TagType *T) {
-  mangleName(T->getOriginalDecl()->getDefinitionOrSelf());
+  mangleName(T->getDecl()->getDefinitionOrSelf());
 }
 
 // <type>       ::= <array-type>
@@ -4235,9 +4235,11 @@ void CXXNameMangler::mangleRISCVFixedRVVVectorType(const VectorType *T) {
     TypeNameOS << "uint32";
     break;
   case BuiltinType::Long:
+  case BuiltinType::LongLong:
     TypeNameOS << "int64";
     break;
   case BuiltinType::ULong:
+  case BuiltinType::ULongLong:
     TypeNameOS << "uint64";
     break;
   case BuiltinType::Float16:
@@ -4248,6 +4250,9 @@ void CXXNameMangler::mangleRISCVFixedRVVVectorType(const VectorType *T) {
     break;
   case BuiltinType::Double:
     TypeNameOS << "float64";
+    break;
+  case BuiltinType::BFloat16:
+    TypeNameOS << "bfloat16";
     break;
   default:
     llvm_unreachable("unexpected element type for fixed-length RVV vector!");
@@ -4474,8 +4479,8 @@ void CXXNameMangler::mangleType(const InjectedClassNameType *T) {
   // Mangle injected class name types as if the user had written the
   // specialization out fully.  It may not actually be possible to see
   // this mangling, though.
-  mangleType(T->getOriginalDecl()->getCanonicalTemplateSpecializationType(
-      getASTContext()));
+  mangleType(
+      T->getDecl()->getCanonicalTemplateSpecializationType(getASTContext()));
 }
 
 void CXXNameMangler::mangleType(const TemplateSpecializationType *T) {
@@ -4637,6 +4642,17 @@ void CXXNameMangler::mangleType(const PipeType *T) {
   Out << "8ocl_pipe";
 }
 
+void CXXNameMangler::mangleType(const OverflowBehaviorType *T) {
+  // Vender-extended type mangling for OverflowBehaviorType
+  // <type> ::= U <behavior> <underlying_type>
+  if (T->isWrapKind()) {
+    Out << "U8ObtWrap_";
+  } else {
+    Out << "U8ObtTrap_";
+  }
+  mangleType(T->getUnderlyingType());
+}
+
 void CXXNameMangler::mangleType(const BitIntType *T) {
   // 5.1.5.2 Builtin types
   // <type> ::= DB <number | instantiation-dependent expression> _
@@ -4747,7 +4763,7 @@ void CXXNameMangler::mangleIntegerLiteral(QualType T,
 void CXXNameMangler::mangleMemberExprBase(const Expr *Base, bool IsArrow) {
   // Ignore member expressions involving anonymous unions.
   while (const auto *RT = Base->getType()->getAsCanonical<RecordType>()) {
-    if (!RT->getOriginalDecl()->isAnonymousStructOrUnion())
+    if (!RT->getDecl()->isAnonymousStructOrUnion())
       break;
     const auto *ME = dyn_cast<MemberExpr>(Base);
     if (!ME)
@@ -5129,15 +5145,6 @@ recurse:
     mangleExpression(cast<ExplicitlyDependentCallExpr>(E)->getSubExpr());
     break;
 
-  case Expr::CXXReflectExprClass: {
-    const CXXReflectExpr *RE = cast<CXXReflectExpr>(E);
-    if (RE->hasDependentSubExpr())
-      mangleExpression(RE->getDependentSubExpr());
-    else
-      mangleReflection(RE->getReflection());
-    break;
-  }
-
   case Expr::ConstantExprClass:
     if (const Expr *SubExpr = cast<ConstantExpr>(E)->getSubExpr()) {
       E = SubExpr;
@@ -5149,11 +5156,21 @@ recurse:
       break;
     }
 
+  case Expr::CXXReflectExprClass: {
+    const CXXReflectExpr *RE = cast<CXXReflectExpr>(E);
+    if (RE->hasDependentSubExpr())
+      mangleExpression(RE->getDependentSubExpr());
+    else
+      mangleReflection(RE->getReflection());
+    break;
+  }
+
   // FIXME: invent manglings for all these.
   case Expr::BlockExprClass:
   case Expr::ChooseExprClass:
   case Expr::CompoundLiteralExprClass:
   case Expr::ExtVectorElementExprClass:
+  case Expr::MatrixElementExprClass:
   case Expr::GenericSelectionExprClass:
   case Expr::ObjCEncodeExprClass:
   case Expr::ObjCIsaExprClass:
@@ -5682,6 +5699,15 @@ recurse:
     Out << "ix";
     mangleExpression(AE->getLHS());
     mangleExpression(AE->getRHS());
+    break;
+  }
+
+  case Expr::MatrixSingleSubscriptExprClass: {
+    NotPrimaryExpr();
+    const MatrixSingleSubscriptExpr *ME = cast<MatrixSingleSubscriptExpr>(E);
+    Out << "ix";
+    mangleExpression(ME->getBase());
+    mangleExpression(ME->getRowIdx());
     break;
   }
 
@@ -6243,6 +6269,8 @@ void CXXNameMangler::mangleCXXDtorType(CXXDtorType T) {
   case Dtor_Comdat:
     Out << "D5";
     break;
+  case Dtor_VectorDeleting:
+    llvm_unreachable("Itanium ABI does not use vector deleting dtors");
   }
 }
 
@@ -7220,8 +7248,7 @@ bool CXXNameMangler::isSpecializedAs(QualType S, llvm::StringRef Name,
   if (!RT)
     return false;
 
-  const ClassTemplateSpecializationDecl *SD =
-      dyn_cast<ClassTemplateSpecializationDecl>(RT->getOriginalDecl());
+  const auto *SD = dyn_cast<ClassTemplateSpecializationDecl>(RT->getDecl());
   if (!SD || !SD->getIdentifier()->isStr(Name))
     return false;
 

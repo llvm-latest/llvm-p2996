@@ -335,20 +335,23 @@ Parser::ParseRHSOfBinaryExpression(ExprResult LHS, prec::Level MinPrec) {
     Token OpToken = Tok;
     ConsumeToken();
 
+    // The reflection operator is not valid here (i.e., in the place of the
+    // operator token in a binary expression), so if reflection and blocks are
+    // enabled, we split caretcaret into two carets: the first being the binary
+    // operator and the second being the introducer for the block.
     if (OpToken.is(tok::caretcaret)) {
-      assert(getLangOpts().Reflection &&
-             "should not have '^^'-token without reflection");
+      assert(getLangOpts().Reflection);
       if (getLangOpts().Blocks) {
         OpToken.setKind(tok::caret);
-        Token T;
+        Token Caret;
         {
-          T.startToken();
-          T.setKind(tok::caret);
-          T.setLocation(Tok.getLocation());
-          T.setLength(1);
+          Caret.startToken();
+          Caret.setKind(tok::caret);
+          Caret.setLocation(OpToken.getLocation().getLocWithOffset(1));
+          Caret.setLength(1);
         }
         UnconsumeToken(OpToken);
-        PP.EnterToken(T, /*IsReinject=*/true);
+        PP.EnterToken(Caret, /*IsReinject=*/true);
         return ParseRHSOfBinaryExpression(LHS, MinPrec);
       }
     }
