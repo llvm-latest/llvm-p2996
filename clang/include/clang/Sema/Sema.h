@@ -15517,6 +15517,23 @@ private:
 
   bool IsSynthesizingExpansionStmt = false;
 
+public:
+  bool isSynthesizingExpansionStmt() const { return IsSynthesizingExpansionStmt; }
+
+  class ExpansionStmtSynthesisRAII {
+    Sema &S;
+    bool OldValue;
+  public:
+    ExpansionStmtSynthesisRAII(Sema &S, bool Enable = true)
+        : S(S), OldValue(S.IsSynthesizingExpansionStmt) {
+      S.IsSynthesizingExpansionStmt = Enable;
+    }
+    ~ExpansionStmtSynthesisRAII() {
+      S.IsSynthesizingExpansionStmt = OldValue;
+    }
+  };
+
+private:
   ///@}
 
   //
@@ -15774,6 +15791,31 @@ public:
   DeclContext *TryFindDeclContextOf(SpliceSpecifier *Splice);
 
   const CXXMetafunctionExpr::ImplFn &getMetafunctionCb(MetaFunctionID FnID);
+
+  static IndirectFieldDecl *findInjectedIndirectField(CXXRecordDecl *Outer,
+                                                      FieldDecl *FD) {
+    if (!Outer || !FD)
+      return nullptr;
+
+    DeclarationName N = FD->getDeclName();
+    if (!N)
+      return nullptr;
+
+    DeclContext::lookup_result R = Outer->lookup(N);
+    for (NamedDecl *ND : R) {
+      auto *IFD = dyn_cast<IndirectFieldDecl>(ND);
+      if (!IFD)
+        continue;
+
+      // The injected decl’s chain ends with the actual field inside the anonymous
+      // record.
+      auto Chain = IFD->chain();
+      if (!Chain.empty() && Chain.back() == FD)
+        return IFD;
+    }
+
+    return nullptr;
+  }
 
 private:
   // Lambdas having bound references to this Sema object, used to evaluate

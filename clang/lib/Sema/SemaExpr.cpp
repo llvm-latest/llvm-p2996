@@ -14765,16 +14765,8 @@ QualType Sema::CheckAddressOfOperand(ExprResult &OrigOp, SourceLocation OpLoc) {
             return QualType();
           }
 
-          while (cast<RecordDecl>(Ctx)->isAnonymousStructOrUnion()) {
+          while (cast<RecordDecl>(Ctx)->isAnonymousStructOrUnion())
             Ctx = Ctx->getParent();
-            if (!isa<RecordDecl>(Ctx)) {
-              Diag(OpLoc,
-                   diag::err_cannot_form_pointer_to_member_anon_union)
-                << dcl->getDeclName()
-                << cast<RecordDecl>(dcl->getDeclContext());
-              return QualType();
-            }
-          }
 
           QualType MPTy = Context.getMemberPointerType(
               unwrapped->getType(), DRE->getQualifier(),
@@ -19005,6 +18997,9 @@ static DeclContext *getParentOfCapturingContextOrNull(DeclContext *DC,
   if (isa<BlockDecl>(DC) || isa<CapturedDecl>(DC) || isLambdaCallOperator(DC))
     return getLambdaAwareParentOfDeclContext(DC);
 
+  if (isa<ExpansionStmtDecl>(DC))
+    return DC->getParent();
+
   VarDecl *Underlying = Var->getPotentiallyDecomposedVarDecl();
   if (Underlying) {
     if (Underlying->hasLocalStorage() && Diagnose)
@@ -19445,6 +19440,12 @@ bool Sema::tryCaptureVariable(
   if (VD) {
     if (VD->isInitCapture())
       VarDC = VarDC->getParent();
+    // Constexpr expansion variables (including reflections) don't need to be
+    // captured during synthesis - they're compile-time constants specific to
+    // each expansion iteration. Return early to avoid capture analysis.
+    if (VD->isConstexpr() && VD->isUsableInConstantExpressions(Context) &&
+        IsSynthesizingExpansionStmt)
+      return true;
   } else {
     VD = Var->getPotentiallyDecomposedVarDecl();
   }
@@ -19468,6 +19469,8 @@ bool Sema::tryCaptureVariable(
            "FunctionScopes.");
     while (FSIndex != MaxFunctionScopesIndex) {
       DC = getLambdaAwareParentOfDeclContext(DC);
+      while (isa<ExpansionStmtDecl>(DC))
+        DC = DC->getParent();
       --FSIndex;
     }
   }
@@ -19496,6 +19499,7 @@ bool Sema::tryCaptureVariable(
   bool Nested = false;
   bool Explicit = (Kind != TryCaptureKind::Implicit);
   unsigned FunctionScopesIndex = MaxFunctionScopesIndex;
+  bool TraversedExpansionStmt = false;
   do {
 
     LambdaScopeInfo *LSI = nullptr;
@@ -19533,7 +19537,19 @@ bool Sema::tryCaptureVariable(
         FunctionScopesIndex = MaxFunctionScopesIndex - 1;
         break;
       }
+      // If we've reached the variable's declaration context, we're done
+      // traversing. This can happen when traversing through expansion statements.
+      if (VarDC->Equals(DC))
+        break;
       return true;
+    }
+
+    // Expansion statements are DeclContexts but don't have FunctionScopeInfo
+    // entries. Just traverse through them.
+    if (isa<ExpansionStmtDecl>(DC)) {
+      TraversedExpansionStmt = true;
+      DC = ParentDC;
+      continue;
     }
 
     FunctionScopeInfo  *FSI = FunctionScopes[FunctionScopesIndex];
@@ -19557,14 +19573,24 @@ bool Sema::tryCaptureVariable(
     // we do not want to capture new variables.  What was captured
     // during either a lambdas transformation or initial parsing
     // should be used.
-    if (isGenericLambdaCallOperatorSpecialization(DC)) {
+    // Exception: During expansion statement synthesis, we're creating fresh
+    // lambdas and should allow new captures.
+    if (isGenericLambdaCallOperatorSpecialization(DC) &&
+        !IsSynthesizingExpansionStmt) {
+      // Check if already captured in the lambda class - if so, we're good.
+      CXXRecordDecl *LambdaClass = cast<CXXMethodDecl>(DC)->getParent();
+      for (const LambdaCapture &Cap : LambdaClass->captures()) {
+        if (Cap.capturesVariable() && Cap.getCapturedVar() == Var)
+          return false;
+      }
       if (BuildAndDiagnose) {
-        LambdaScopeInfo *LSI = cast<LambdaScopeInfo>(CSI);
-        if (LSI->ImpCaptureStyle == CapturingScopeInfo::ImpCap_None) {
+        LambdaScopeInfo *LSI = dyn_cast<LambdaScopeInfo>(CSI);
+        if (LSI && LSI->ImpCaptureStyle == CapturingScopeInfo::ImpCap_None) {
           Diag(ExprLoc, diag::err_lambda_impcap) << Var;
           Diag(Var->getLocation(), diag::note_previous_decl) << Var;
-          Diag(LSI->Lambda->getBeginLoc(), diag::note_lambda_decl);
-          buildLambdaCaptureFixit(*this, LSI, Var);
+          Diag(LambdaClass->getBeginLoc(), diag::note_lambda_decl);
+          if (LSI)
+            buildLambdaCaptureFixit(*this, LSI, Var);
         } else
           diagnoseUncapturableValueReferenceOrBinding(*this, ExprLoc, Var);
       }
@@ -19650,6 +19676,31 @@ bool Sema::tryCaptureVariable(
     if (CSI->ImpCaptureStyle == CapturingScopeInfo::ImpCap_None && !Explicit) {
       // No capture-default, and this is not an explicit capture
       // so cannot capture this variable.
+      // Exception: Non-type template parameters and constexpr expansion variables
+      // don't need to be captured - they're compile-time constants.
+      if (isa<NonTypeTemplateParmDecl>(Var)) {
+        // Successfully "captured" (no actual capture needed)
+        FunctionScopesIndex = MaxFunctionScopesIndex - 1;
+        break;
+      }
+      // Only skip capture for constexpr variables usable in constant expressions.
+      // This includes expansion variables (scalars and reflections) but we need to
+      // be careful not to include regular constexpr struct variables.
+      // During expansion synthesis or when we've traversed an expansion statement,
+      // allow skipping capture. Otherwise, require the variable to have scalar or
+      // consteval-only type (not regular structs).
+      bool InExpansionStmt = IsSynthesizingExpansionStmt || TraversedExpansionStmt;
+      if (VD && VD->isConstexpr() && VD->isUsableInConstantExpressions(Context)) {
+        bool AllowSkipCapture = InExpansionStmt ||
+                                 Var->getType()->isScalarType() ||
+                                 Var->getType()->isConstevalOnly();
+        if (AllowSkipCapture) {
+          // Constexpr expansion variables (or other compile-time constants)
+          // don't need to be captured.
+          FunctionScopesIndex = MaxFunctionScopesIndex - 1;
+          break;
+        }
+      }
       if (BuildAndDiagnose) {
         Diag(ExprLoc, diag::err_lambda_impcap) << Var;
         Diag(Var->getLocation(), diag::note_previous_decl) << Var;
@@ -20227,6 +20278,13 @@ static void DoMarkPotentialCapture(Sema &SemaRef, SourceLocation Loc,
   }
 }
 
+static bool isDeclaredInExpansionStmtDecl(const Decl *D) {
+  for (const DeclContext *DC = D->getDeclContext(); DC; DC = DC->getParent())
+    if (isa<ExpansionStmtDecl>(DC))
+      return true;
+  return false;
+}
+
 static void DoMarkVarDeclReferenced(
     Sema &SemaRef, SourceLocation Loc, VarDecl *Var, Expr *E,
     llvm::DenseMap<const VarDecl *, int> &RefsMinusAssignments) {
@@ -20390,9 +20448,14 @@ static void DoMarkVarDeclReferenced(
 
   case OdrUseContext::Used:
     // If we might later find that this expression isn't actually an odr-use,
-    // delay the marking.
-    if (E && Var->isUsableInConstantExpressions(SemaRef.Context))
+    // delay the marking. But during expansion statement synthesis, we need
+    // immediate capture so lambda closures are properly constructed.
+    if (E && Var->isUsableInConstantExpressions(SemaRef.Context) &&
+        !SemaRef.isSynthesizingExpansionStmt())
       SemaRef.MaybeODRUseExprs.insert(E);
+    else if (SemaRef.isSynthesizingExpansionStmt() &&
+             isDeclaredInExpansionStmtDecl(Var))
+      Var->markUsed(SemaRef.Context);
     else
       MarkVarDeclODRUsed(Var, Loc, SemaRef);
     break;
@@ -20402,7 +20465,15 @@ static void DoMarkVarDeclReferenced(
     // odr-used, but we may still need to track them for lambda capture.
     // FIXME: Do we also need to do this inside dependent typeid expressions
     // (which are modeled as unevaluated at this point)?
-    DoMarkPotentialCapture(SemaRef, Loc, Var, E);
+    // During expansion statement synthesis, we need immediate capture so
+    // lambda closures are properly constructed.
+    if (SemaRef.isSynthesizingExpansionStmt() &&
+        isDeclaredInExpansionStmtDecl(Var))
+      Var->markUsed(SemaRef.Context);
+    else if (SemaRef.isSynthesizingExpansionStmt())
+      MarkVarDeclODRUsed(Var, Loc, SemaRef);
+    else
+      DoMarkPotentialCapture(SemaRef, Loc, Var, E);
     break;
   }
 }
