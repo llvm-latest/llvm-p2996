@@ -4772,7 +4772,7 @@ void TypoCorrectionConsumer::addCorrection(TypoCorrection Correction) {
           RI->getAsString(SemaRef.getLangOpts())};
 
       if (NewKey < PrevKey)
-        *RI = Correction;
+        *RI = std::move(Correction);
       return;
     }
   }
@@ -5509,7 +5509,7 @@ TypoCorrection Sema::CorrectTypo(const DeclarationNameInfo &TypoName,
 
     if (BestTC.getCorrection().getAsString() != "super") {
       if (SecondBestTC.getCorrection().getAsString() == "super")
-        BestTC = SecondBestTC;
+        BestTC = std::move(SecondBestTC);
       else if ((*Consumer)["super"].front().isKeyword())
         BestTC = (*Consumer)["super"].front();
     }

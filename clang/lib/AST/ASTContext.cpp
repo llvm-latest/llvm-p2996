@@ -53,6 +53,7 @@
 #include "clang/Basic/AddressSpaces.h"
 #include "clang/Basic/Builtins.h"
 #include "clang/Basic/CommentOptions.h"
+#include "clang/Basic/DiagnosticAST.h"
 #include "clang/Basic/ExceptionSpecificationType.h"
 #include "clang/Basic/IdentifierTable.h"
 #include "clang/Basic/LLVM.h"
@@ -9266,9 +9267,8 @@ static char getObjCEncodingForPrimitiveType(const ASTContext *C,
 #include "clang/Basic/AMDGPUTypes.def"
       {
         DiagnosticsEngine &Diags = C->getDiagnostics();
-        unsigned DiagID = Diags.getCustomDiagID(DiagnosticsEngine::Error,
-                                                "cannot yet @encode type %0");
-        Diags.Report(DiagID) << BT->getName(C->getPrintingPolicy());
+        Diags.Report(diag::err_unsupported_objc_primitive_encoding)
+            << QualType(BT, 0);
         return ' ';
       }
 
