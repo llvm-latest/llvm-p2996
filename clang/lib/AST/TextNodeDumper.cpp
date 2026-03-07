@@ -620,6 +620,7 @@ static bool isSimpleAPValue(const APValue &Value) {
   case APValue::Vector:
   case APValue::Array:
   case APValue::Struct:
+  case APValue::Matrix:
   case APValue::Reflection:
     return false;
   case APValue::Union:
@@ -811,6 +812,19 @@ void TextNodeDumper::Visit(const APValue &Value, QualType Ty) {
         },
         Value.getStructNumFields(), "field", "fields");
 
+    return;
+  }
+  case APValue::Matrix: {
+    unsigned NumRows = Value.getMatrixNumRows();
+    unsigned NumCols = Value.getMatrixNumColumns();
+    OS << "Matrix " << NumRows << "x" << NumCols;
+
+    dumpAPValueChildren(
+        Value, Ty,
+        [](const APValue &Value, unsigned Index) -> const APValue & {
+          return Value.getMatrixElt(Index);
+        },
+        Value.getMatrixNumElements(), "element", "elements");
     return;
   }
   case APValue::Union: {

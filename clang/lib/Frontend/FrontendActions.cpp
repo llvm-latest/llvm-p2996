@@ -478,6 +478,10 @@ private:
       return "PartialOrderingTTP";
     case CodeSynthesisContext::ExpansionStmtInstantiation:
       return "ExpansionStmtInstantiation";
+    case CodeSynthesisContext::SYCLKernelLaunchLookup:
+      return "SYCLKernelLaunchLookup";
+    case CodeSynthesisContext::SYCLKernelLaunchOverloadResolution:
+      return "SYCLKernelLaunchOverloadResolution";
     }
     return "";
   }

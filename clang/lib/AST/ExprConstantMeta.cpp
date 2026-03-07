@@ -547,7 +547,7 @@ NamedDecl *findTypeDecl(QualType QT) {
   return llvm::TypeSwitch<const Type *, NamedDecl *>(QT.getTypePtr())
       .Case<TypedefType>([](auto *T) { return T->getDecl(); })
       .Case<UsingType>([](auto *T) { return T->getDecl(); })
-      .Case<TagType>([](auto *T) { return T->getOriginalDecl(); })
+      .Case<TagType>([](auto *T) { return T->getDecl(); })
       .Case<UnresolvedUsingType>([](auto *T) { return T->getDecl(); })
       .Case<SubstTemplateTypeParmType>(
           [](auto *T) { return findTypeDecl(T->getReplacementType()); })
