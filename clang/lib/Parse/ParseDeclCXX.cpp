@@ -4854,7 +4854,7 @@ void Parser::ParseCXX11AttributeSpecifierInternal(ParsedAttributes &Attrs,
         if (ScopeName == nullptr && !IsBuiltInAttribute(AttrName, ScopeName)) {
           auto TryParseAnnotation = [this, &Attrs, &EndLoc](bool InsertParens) {
             SourceLocation EqLoc = Tok.getLocation();
-            TentativeParsingAction TPA(*this);
+            TentativeParsingAction TPA(*this, InsertParens);
 
             // insert '(' and ')' tokens at the current position
             if (InsertParens) {
@@ -4869,7 +4869,10 @@ void Parser::ParseCXX11AttributeSpecifierInternal(ParsedAttributes &Attrs,
             }
 
             Diags.setSuppressAllDiagnostics(true);
-            ExprResult AnnotExpr = ParseConstantExpression();
+            EnterExpressionEvaluationContext ConstantEvaluated(
+                Actions, Sema::ExpressionEvaluationContext::ConstantEvaluated);
+            ExprResult AnnotExpr = ParseConstantExpressionInExprEvalContext(
+                TypoCorrectionTypeBehavior::AllowTypes);
             Diags.setSuppressAllDiagnostics(false);
 
             if (!AnnotExpr.isInvalid() && !AnnotExpr.get()->containsErrors()) {
@@ -4888,11 +4891,23 @@ void Parser::ParseCXX11AttributeSpecifierInternal(ParsedAttributes &Attrs,
               return true;
             }
 
-            TPA.Revert();
             if (InsertParens) {
-              // Remove previously inserted tokens '(' and ')'
-              PP.RemoveNextCachedToken(2);
-              ConsumeToken();
+              // TODO: Fix unknown attribute range
+              // Current:  'Foo.foo' -> 'Foo.foo'
+              //                         ~~~
+              // Unknown attribute 'Foo' ignored
+              // Expected: 'Foo.foo' -> 'Foo.foo'
+              //                         ~~~~~~~
+              // Unknown attribute 'Foo.foo' ignored
+
+              // Make '[[ Foo(...) ]]' as an unknown attribute
+              TPA.Commit();
+              // TODO: Is need remove previously inserted tokens '(' and ')'
+              // if (PP.getCachedLexPos())
+              //   PP.RemoveNextCachedToken(2);
+              // ConsumeToken();
+            } else {
+              TPA.Revert();
             }
             return false;
           };
