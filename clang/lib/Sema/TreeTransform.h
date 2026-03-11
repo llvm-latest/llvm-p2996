@@ -9015,6 +9015,7 @@ TreeTransform<Derived>::TransformCXXReflectExpr(CXXReflectExpr *E) {
                                           E->getOperandRange().getBegin(),
                                           cast<UsingShadowDecl>(Transformed)));
   }
+  // todo handle template parameter reflection
   case ReflectionKind::Parameter: {
     Decl *Transformed = getDerived().TransformDecl(E->getExprLoc(),
                                                    RV.getReflectedParameter());
