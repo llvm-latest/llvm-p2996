@@ -4084,7 +4084,7 @@ OverflowBehaviorType::OverflowBehaviorType(
     QualType Canon, QualType Underlying,
     OverflowBehaviorType::OverflowBehaviorKind Kind)
     : Type(OverflowBehavior, Canon, Underlying->getDependence(),
-           Canon->isConstevalOnly()),
+           Underlying->isConstevalOnly()),
       UnderlyingType(Underlying), BehaviorKind(Kind) {}
 
 BoundsAttributedType::BoundsAttributedType(TypeClass TC, QualType Wrapped,
