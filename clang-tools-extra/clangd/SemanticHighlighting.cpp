@@ -780,11 +780,11 @@ public:
 
   bool VisitDecltypeTypeLoc(DecltypeTypeLoc L) {
     if (auto K = kindForType(L.getTypePtr(), H.getResolver())) {
-      auto &Tok = H.addToken(L.getBeginLoc(), *K)
-                      .addModifier(HighlightingModifier::Deduced);
-      if (auto Mod = scopeModifier(L.getTypePtr()))
-        Tok.addModifier(*Mod);
-      if (isDefaultLibrary(L.getTypePtr()))
+      auto &Tok = H.addToken(L.getBeginLoc(), HighlightingKind::Type);
+      //                 .addModifier(HighlightingModifier::Deduced);
+      // if (auto Mod = scopeModifier(L.getTypePtr()))
+      //   Tok.addModifier(*Mod);
+      // if (isDefaultLibrary(L.getTypePtr()))
         Tok.addModifier(HighlightingModifier::DefaultLibrary);
     }
     return true;
@@ -847,12 +847,12 @@ public:
     if (StartLoc == D->getLocation())
       return true;
 
-    auto &Tok =
-        H.addToken(StartLoc, *K).addModifier(HighlightingModifier::Deduced);
-    const Type *Deduced = AT->getDeducedType().getTypePtrOrNull();
-    if (auto Mod = scopeModifier(Deduced))
-      Tok.addModifier(*Mod);
-    if (isDefaultLibrary(Deduced))
+    auto &Tok = H.addToken(StartLoc, HighlightingKind::Type);
+    //                 .addModifier(HighlightingModifier::Deduced);
+    // const Type *Deduced = AT->getDeducedType().getTypePtrOrNull();
+    // if (auto Mod = scopeModifier(Deduced))
+    //   Tok.addModifier(*Mod);
+    // if (isDefaultLibrary(Deduced))
       Tok.addModifier(HighlightingModifier::DefaultLibrary);
     return true;
   }
