@@ -4868,12 +4868,11 @@ void Parser::ParseCXX11AttributeSpecifierInternal(ParsedAttributes &Attrs,
               PP.EnterTokens(Toks, true);
             }
 
+            Actions.DisableTypoCorrection = true;
             Diags.setSuppressAllDiagnostics(true);
-            EnterExpressionEvaluationContext ConstantEvaluated(
-                Actions, Sema::ExpressionEvaluationContext::ConstantEvaluated);
-            ExprResult AnnotExpr = ParseConstantExpressionInExprEvalContext(
-                TypoCorrectionTypeBehavior::AllowTypes);
+            ExprResult AnnotExpr = ParseConstantExpression();
             Diags.setSuppressAllDiagnostics(false);
+            Actions.DisableTypoCorrection = false;
 
             if (!AnnotExpr.isInvalid() && !AnnotExpr.get()->containsErrors()) {
               TPA.Commit();
