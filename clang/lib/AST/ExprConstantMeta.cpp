@@ -172,6 +172,21 @@ bool is_accessible(const MetaFunctionEvalContext &EvalCtx);
 bool is_access_specified(const MetaFunctionEvalContext &EvalCtx);
 bool reflect_invoke(const MetaFunctionEvalContext &EvalCtx);
 
+// ==========================================
+// Usagi MetaFunction Extensions Declarations
+// ==========================================
+
+bool getTemplateParameterName(const MetaFunctionEvalContext &EvalCtx,
+                              const Decl *D, std::string &Out,
+                              bool &Consistent);
+// bool template_parameters_of(const MetaFunctionEvalContext &EvalCtx);
+bool get_ith_template_parameters_of(const MetaFunctionEvalContext &EvalCtx);
+bool is_type_template_parameter(const MetaFunctionEvalContext &EvalCtx);
+bool is_non_type_template_parameter(const MetaFunctionEvalContext &EvalCtx);
+bool is_template_template_parameter(const MetaFunctionEvalContext &EvalCtx);
+bool is_template_parameter_pack(const MetaFunctionEvalContext &EvalCtx);
+bool type_constraint_of(const MetaFunctionEvalContext &EvalCtx);
+
 // -----------------------------------------------------------------------------
 // Metafunction table
 //
@@ -338,6 +353,23 @@ constexpr MetaFunction Metafunctions[] = {
     // Other bespoke functions (not proposed at this time)
     SEMA_METAFUNCTION(Bool, 1, 1, is_access_specified),
     SEMA_METAFUNCTION(MetaInfo, 5, 5, reflect_invoke),
+
+    SEMA_METAFUNCTION_PLACEHOLDER(133),
+    SEMA_METAFUNCTION_PLACEHOLDER(134),
+    SEMA_METAFUNCTION_PLACEHOLDER(135),
+    SEMA_METAFUNCTION_PLACEHOLDER(136),
+    SEMA_METAFUNCTION_PLACEHOLDER(137),
+    SEMA_METAFUNCTION_PLACEHOLDER(138),
+    SEMA_METAFUNCTION_PLACEHOLDER(139),
+    SEMA_METAFUNCTION_PLACEHOLDER(140),
+
+    // Usagi Extensions Metafunctions
+    SEMA_METAFUNCTION(MetaInfo, 3, 3, get_ith_template_parameters_of),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_type_template_parameter),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_non_type_template_parameter),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_template_template_parameter),
+    SEMA_METAFUNCTION(Bool, 1, 1, is_template_parameter_pack),
+    SEMA_METAFUNCTION(MetaInfo, 1, 1, type_constraint_of),
 };
 
 #undef SEMA_METAFUNCTION_PLACEHOLDER
@@ -346,7 +378,8 @@ constexpr MetaFunction Metafunctions[] = {
 constexpr std::size_t NumMetafunctions =
     static_cast<std::size_t>(MetaFunctionID::sentinel);
 static_assert(NumMetafunctions == sizeof(Metafunctions) / sizeof(MetaFunction));
-#pragma endregion
+
+StringRef DescriptionOf(APValue RV, bool Granular = true);
 
 // -----------------------------------------------------------------------------
 // Metafunction helper functions
@@ -369,12 +402,17 @@ APValue makeReflection(Decl *D) {
   if (isa<NamespaceDecl>(D) || isa<NamespaceAliasDecl>(D) ||
       isa<TranslationUnitDecl>(D))
     return {ReflectionKind::Namespace, D};
-  else if (isa<TemplateDecl>(D))
-    return {ReflectionKind::Template, D};
   else if (isa<UsingShadowDecl>(D))
     return {ReflectionKind::EntityProxy, D};
   else if (isa<ParmVarDecl>(D))
     return {ReflectionKind::Parameter, D};
+  else if (isa<TemplateTemplateParmDecl>(D) || isa<TemplateTypeParmDecl>(D) ||
+           isa<NonTypeTemplateParmDecl>(D))
+    return {ReflectionKind::TemplateParameter, D};
+  // this must be checked last because TemplateTemplateParmDecl is also a
+  // TemplateDecl
+  else if (isa<TemplateDecl>(D))
+    return {ReflectionKind::Template, D};
 
   return {ReflectionKind::Declaration, D};
 }
@@ -491,55 +529,83 @@ void getDeclName(std::string &Result, ASTContext &C, Decl *D) {
   }
 }
 
-bool getParameterName(ParmVarDecl *PVD, std::string &Out) {
-  // Parameters instantiated from function parameter packs are not considered
-  // to have identifiers.
-  if (auto STTPT = dyn_cast<SubstTemplateTypeParmType>(PVD->getType());
-      STTPT && STTPT->getPackIndex())
-    return true;
+// Returns true if an error occurred (diagnostic emitted).
+// Sets 'Consistent' to false if the name is inconsistent across redeclarations.
+bool getParameterName(const MetaFunctionEvalContext &EvalCtx,
+                      const ParmVarDecl *D, std::string &Out,
+                      bool &Consistent) {
+  Consistent = true;
 
-  unsigned ParamIdx = PVD->getFunctionScopeIndex();
+  if (const auto *PVD = dyn_cast<ParmVarDecl>(D)) {
+    // Parameters instantiated from function parameter packs are not considered
+    // to have identifiers.
+    if (auto STTPT = dyn_cast<SubstTemplateTypeParmType>(PVD->getType());
+        STTPT && STTPT->getPackIndex())
+      return false;
 
-  // TODO(P2996): This will crash if we're in the trailing requires-clause of
-  // a function declaration, since the DeclContext is not the function but the
-  // TranslationUnitDecl.
-  FunctionDecl *FD = cast<FunctionDecl>(PVD->getDeclContext());
-  FD = FD->getMostRecentDecl();
-  PVD = FD->getParamDecl(ParamIdx);
+    unsigned ParamIdx = PVD->getFunctionScopeIndex();
 
-  bool Consistent = true;
-  StringRef FirstNameSeen = PVD->getName();
-
-  while (PVD) {
-    FD = cast<FunctionDecl>(PVD->getDeclContext());
-    FD = FD->getPreviousDecl();
+    const auto *FD = dyn_cast<FunctionDecl>(PVD->getDeclContext());
     if (!FD) {
-      Out = FirstNameSeen;
+      // Fix(P2996): Ban querying name if we are in a context where the
+      // FunctionDecl is not yet attached (e.g. trailing requires clause).
+      EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
+                        diag::metafn_cannot_query_property)
+          << 8 /* name */
+          << DescriptionOf(APValue(ReflectionKind::Parameter, D))
+          << EvalCtx.Range;
       return true;
     }
 
-    PVD = FD->getParamDecl(ParamIdx);
-    assert(PVD);
-    if (IdentifierInfo *II = PVD->getIdentifier()) {
-      if (FirstNameSeen.empty()) {
-        FirstNameSeen = II->getName();
-      } else if (II->getName() != FirstNameSeen) {
-        Consistent = false;
-        break;
+    FD = FD->getMostRecentDecl();
+    const auto *CurrentPVD = FD->getParamDecl(ParamIdx);
+
+    Consistent = true;
+    StringRef FirstNameSeen = CurrentPVD->getName();
+
+    while (CurrentPVD) {
+      FD = cast<FunctionDecl>(CurrentPVD->getDeclContext());
+      FD = FD->getPreviousDecl();
+      if (!FD) {
+        Out = FirstNameSeen;
+        return false;
+      }
+
+      CurrentPVD = FD->getParamDecl(ParamIdx);
+      assert(CurrentPVD);
+      if (IdentifierInfo *II = CurrentPVD->getIdentifier()) {
+        if (FirstNameSeen.empty()) {
+          FirstNameSeen = II->getName();
+        } else if (II->getName() != FirstNameSeen) {
+          Consistent = false;
+          break;
+        }
       }
     }
+    Out = FirstNameSeen;
+    return false;
   }
-  Out = FirstNameSeen;
-  return Consistent;
+
+  return false;
 }
 
-ParmVarDecl *getMostRecentParmVarDecl(ParmVarDecl *PVD) {
-  // TODO(P2996): This will crash if we're in the trailing requires-clause of
-  // a function declaration, since the DeclContext is not the function but the
-  // TranslationUnitDecl.
-  FunctionDecl *FD = cast<FunctionDecl>(PVD->getDeclContext());
-  FD = FD->getMostRecentDecl();
-  return FD->getParamDecl(PVD->getFunctionScopeIndex());
+ParmVarDecl *getMostRecentParmVarDecl(const MetaFunctionEvalContext &EvalCtx,
+                                      ParmVarDecl *PVD) {
+  // Fix(P2996): Use dyn_cast to prevent crashing in trailing requires-clauses
+  // where DeclContext might not be a FunctionDecl.
+  if (auto *FD = dyn_cast<FunctionDecl>(PVD->getDeclContext())) {
+    FD = FD->getMostRecentDecl();
+    return FD->getParamDecl(PVD->getFunctionScopeIndex());
+  }
+
+  // We cannot query properties that depend on the function context (like
+  // default args) if the parameter is not yet attached to a FunctionDecl.
+  // todo impl support for trailing reqs
+  EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
+                    diag::metafn_function_has_trailing_reqs)
+      << EvalCtx.Range;
+
+  return nullptr;
 }
 
 #pragma region FindDecl Helpers
@@ -564,17 +630,17 @@ NamedDecl *findTypeDecl(QualType QT) {
       .Default([&](const Type *) -> NamedDecl * { return QT->getAsTagDecl(); });
 }
 
-bool findWhateverDeclLocWithLoc(const MetaFunctionEvalContext &EvalCtx,
-                                SourceLocation BLoc, SourceLocation RParenLoc,
-                                DeclContext *Context) {
+bool findAnyKindOfDeclLocWithLoc(const MetaFunctionEvalContext &EvalCtx,
+                                 SourceLocation BLoc, SourceLocation RParenLoc,
+                                 DeclContext *Context) {
   SourceLocExpr *SLE = new (*EvalCtx.C)
       SourceLocExpr(*EvalCtx.C, SourceLocIdentKind::SourceLocStruct,
                     EvalCtx.ResultTy, BLoc, RParenLoc, Context);
   return !EvalCtx.Evaluator(*EvalCtx.Result, SLE, true);
 }
 
-bool findWhateverDeclLoc(const MetaFunctionEvalContext &EvalCtx, Decl *D) {
-  return findWhateverDeclLocWithLoc(
+bool findAnyKindOfDeclLoc(const MetaFunctionEvalContext &EvalCtx, Decl *D) {
+  return findAnyKindOfDeclLocWithLoc(
       EvalCtx, D ? D->getLocation() : SourceLocation(), SourceLocation(),
       D ? D->getDeclContext() : nullptr);
 }
@@ -582,23 +648,24 @@ bool findWhateverDeclLoc(const MetaFunctionEvalContext &EvalCtx, Decl *D) {
 bool findTypeDeclLoc(const MetaFunctionEvalContext &EvalCtx, QualType QT) {
   // Get the type's declaration.
   NamedDecl *D = findTypeDecl(QT);
-  return findWhateverDeclLoc(EvalCtx, D);
+  return findAnyKindOfDeclLoc(EvalCtx, D);
 }
 
 bool findDeclLoc(const MetaFunctionEvalContext &EvalCtx, Decl *D) {
-  return findWhateverDeclLoc(EvalCtx, D);
+  return findAnyKindOfDeclLoc(EvalCtx, D);
 }
 
 bool findBaseSpecLoc(const MetaFunctionEvalContext &EvalCtx,
                      CXXBaseSpecifier *B) {
-  return findWhateverDeclLocWithLoc(EvalCtx, B->getBeginLoc(), SourceLocation(),
-                                    B->getDerived()->getDeclContext());
+  return findAnyKindOfDeclLocWithLoc(EvalCtx, B->getBeginLoc(),
+                                     SourceLocation(),
+                                     B->getDerived()->getDeclContext());
 }
 
 bool findAnnotLoc(const MetaFunctionEvalContext &EvalCtx,
                   CXX26AnnotationAttr *A) {
-  return findWhateverDeclLocWithLoc(EvalCtx, A->getEqLoc(), SourceLocation(),
-                                    nullptr);
+  return findAnyKindOfDeclLocWithLoc(EvalCtx, A->getEqLoc(), SourceLocation(),
+                                     nullptr);
 }
 #pragma endregion
 
@@ -1078,7 +1145,7 @@ StringRef GetSpecialMemberName(DeclarationName Name, bool IsTemplate) {
   }
 }
 
-StringRef DescriptionOf(APValue RV, bool Granular = true) {
+StringRef DescriptionOf(APValue RV, bool Granular) {
   // 1. Handle non-AST constructs first (Simple Kinds)
   switch (RV.getReflectionKind()) {
   case ReflectionKind::Null:
@@ -1125,10 +1192,9 @@ StringRef DescriptionOf(APValue RV, bool Granular = true) {
         .Case<BindingDecl>([](auto) { return "a structured binding"; })
         .Case<FunctionDecl>([](auto) { return "a function"; })
         .Case<EnumConstantDecl>([](auto) { return "a enumerator"; })
-        .Default([] {
+        .Default([](auto) -> StringRef {
           llvm_unreachable("unhandled declaration kind");
-          return StringRef();
-        }());
+        });
   }
 
   if (RV.getReflectionKind() == ReflectionKind::Template) {
@@ -1145,10 +1211,9 @@ StringRef DescriptionOf(APValue RV, bool Granular = true) {
         .Case<TypeAliasTemplateDecl>([](auto) { return "an alias template"; })
         .Case<VarTemplateDecl>([](auto) { return "a variable template"; })
         .Case<ConceptDecl>([](auto) { return "a concept"; })
-        .Default([]() {
+        .Default([](auto) -> StringRef {
           llvm_unreachable("unhandled template kind");
-          return StringRef();
-        }());
+        });
   }
 
   if (RV.getReflectionKind() == ReflectionKind::Namespace) {
@@ -1156,10 +1221,23 @@ StringRef DescriptionOf(APValue RV, bool Granular = true) {
         .Case<TranslationUnitDecl>([](auto) { return "the global namespace"; })
         .Case<NamespaceAliasDecl>([](auto) { return "a namespace alias"; })
         .Case<NamespaceDecl>([](auto) { return "a namespace"; })
-        .Default([] {
+        .Default([](auto) -> StringRef {
           llvm_unreachable("unhandled namespace kind");
-          return StringRef();
-        }());
+        });
+  }
+
+  if (RV.getReflectionKind() == ReflectionKind::TemplateParameter) {
+    return llvm::TypeSwitch<Decl *, StringRef>(
+               RV.getReflectedTemplateParameter())
+        .Case<TemplateTypeParmDecl>(
+            [](auto) { return "a type template parameter"; })
+        .Case<NonTypeTemplateParmDecl>(
+            [](auto) { return "a non-type template parameter"; })
+        .Case<TemplateTemplateParmDecl>(
+            [](auto) { return "a template template parameter"; })
+        .Default([](auto) -> StringRef {
+          llvm_unreachable("unhandled template parameter kind");
+        });
   }
 
   llvm_unreachable("Unknown ReflectionKind");
@@ -1212,14 +1290,6 @@ void CheckResultTyIsSizeT(const MetaFunctionEvalContext &EvalCtx) {
 #pragma endregion
 
 // -----------------------------------------------------------------------------
-// Yukino's extension helper functions
-// -----------------------------------------------------------------------------
-
-// #pragma region Yukino's extension helpers
-
-// #pragma endregion
-
-// -----------------------------------------------------------------------------
 // Metafunction implementations
 // -----------------------------------------------------------------------------
 
@@ -1248,25 +1318,14 @@ bool get_begin_enumerator_decl_of(const MetaFunctionEvalContext &EvalCtx) {
       }
       return SetAndSucceed(*EvalCtx.Result, Sentinel);
     }
-    return DiagnoseReflectionKind(EvalCtx.Diagnoser, EvalCtx.Range,
-                                  "an enum type");
+    // return DiagnoseReflectionKind(EvalCtx.Diagnoser, EvalCtx.Range,
+    // "an enum type");
   }
-  case ReflectionKind::Null:
-  case ReflectionKind::Declaration:
-  case ReflectionKind::Template:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::EntityProxy:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation: {
+  default: {
     return DiagnoseReflectionKind(EvalCtx.Diagnoser, EvalCtx.Range,
                                   "an enum type", DescriptionOf(RV));
   }
   }
-  llvm_unreachable("unknown reflection kind");
 }
 
 bool get_next_enumerator_decl_of(const MetaFunctionEvalContext &EvalCtx) {
@@ -1290,21 +1349,10 @@ bool get_next_enumerator_decl_of(const MetaFunctionEvalContext &EvalCtx) {
     }
     return SetAndSucceed(*EvalCtx.Result, Sentinel);
   }
-  case ReflectionKind::Null:
-  case ReflectionKind::Type:
-  case ReflectionKind::Template:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::EntityProxy:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation: {
+  default: {
     llvm_unreachable("should have failed in 'get_begin_enumerator_decl_of'");
   }
   }
-  llvm_unreachable("unknown reflection kind");
 }
 
 bool get_ith_base_of(const MetaFunctionEvalContext &EvalCtx) {
@@ -1352,21 +1400,10 @@ bool get_ith_base_of(const MetaFunctionEvalContext &EvalCtx) {
                              diag::metafn_cannot_introspect_type)
            << 0 << 1 << EvalCtx.Range;
   }
-  case ReflectionKind::Null:
-  case ReflectionKind::Declaration:
-  case ReflectionKind::Template:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::EntityProxy:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
+  default:
     return DiagnoseReflectionKind(EvalCtx.Diagnoser, EvalCtx.Range,
                                   "a class type", DescriptionOf(RV));
   }
-  llvm_unreachable("unknown reflection kind");
 }
 
 bool get_ith_template_argument_of(const MetaFunctionEvalContext &EvalCtx) {
@@ -1415,27 +1452,17 @@ bool get_ith_template_argument_of(const MetaFunctionEvalContext &EvalCtx) {
               .Lift(QualType{});
     return SetAndSucceed(*EvalCtx.Result, R);
   }
-  case ReflectionKind::Null:
-  case ReflectionKind::Template:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::EntityProxy:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
+  default:
     return DiagnoseReflectionKind(EvalCtx.Diagnoser, EvalCtx.Range,
                                   "a template specialization",
                                   DescriptionOf(RV));
   }
-  llvm_unreachable("unknown reflection kind");
 }
 
 bool get_begin_member_decl_of(const MetaFunctionEvalContext &EvalCtx) {
   CheckResultTyIsMetaInfo(EvalCtx);
-  
   CheckReflectionArg(EvalCtx, 0);
+
   APValue RV;
   if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true)) {
     return true;
@@ -1506,19 +1533,9 @@ bool get_begin_member_decl_of(const MetaFunctionEvalContext &EvalCtx) {
     return SetAndSucceed(*EvalCtx.Result,
                          APValue(ReflectionKind::Declaration, beginMember));
   }
-  case ReflectionKind::Null:
-  case ReflectionKind::Declaration:
-  case ReflectionKind::EntityProxy:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::Template:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
+  default:
     return true;
   }
-  llvm_unreachable("unknown reflection kind");
 }
 
 bool get_next_member_decl_of(const MetaFunctionEvalContext &EvalCtx) {
@@ -1655,8 +1672,10 @@ bool identifier_of(const MetaFunctionEvalContext &EvalCtx) {
     break;
   }
   case ReflectionKind::Parameter: {
-    bool ConsistentName = getParameterName(RV.getReflectedParameter(), Name);
-    if (EnforceConsistent && !ConsistentName) {
+    bool Consistent;
+    if (getParameterName(EvalCtx, RV.getReflectedParameter(), Name, Consistent))
+      return true; // Diagnostic emitted
+    if (EnforceConsistent && !Consistent) {
       return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
                                diag::metafn_inconsistent_name)
              << DescriptionOf(RV) << EvalCtx.Range;
@@ -1723,6 +1742,18 @@ bool identifier_of(const MetaFunctionEvalContext &EvalCtx) {
            << DescriptionOf(RV) << EvalCtx.Range;
   case ReflectionKind::EntityProxy:
     llvm_unreachable("proxies should already have been unwrapped");
+  case ReflectionKind::TemplateParameter: {
+    bool Consistent;
+    if (getTemplateParameterName(EvalCtx, RV.getReflectedTemplateParameter(),
+                                 Name, Consistent))
+      return true; // Diagnostic emitted
+    if (EnforceConsistent && !Consistent) {
+      return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
+                               diag::metafn_inconsistent_name)
+             << DescriptionOf(RV) << EvalCtx.Range;
+    }
+    break;
+  }
   }
   if (Name.empty())
     return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
@@ -1759,11 +1790,10 @@ bool has_identifier(const MetaFunctionEvalContext &EvalCtx) {
     break;
   }
   case ReflectionKind::Parameter: {
-    auto *PVD = RV.getReflectedParameter();
-
     std::string Name;
-    bool Consistent = getParameterName(PVD, Name);
-
+    bool Consistent;
+    if (getParameterName(EvalCtx, RV.getReflectedParameter(), Name, Consistent))
+      return true; // Diagnostic emitted
     HasIdentifier = Consistent && !Name.empty();
     break;
   }
@@ -1777,7 +1807,9 @@ bool has_identifier(const MetaFunctionEvalContext &EvalCtx) {
       break;
     else if (auto *PVD = dyn_cast<ParmVarDecl>(D)) {
       std::string Name;
-      (void)getParameterName(PVD, Name);
+      bool Consistent;
+      if (getParameterName(EvalCtx, PVD, Name, Consistent))
+        return true; // Diagnostic emitted
       HasIdentifier = !Name.empty();
     } else if (auto *ND = dyn_cast<NamedDecl>(D))
       HasIdentifier = (ND->getIdentifier() != nullptr);
@@ -1803,14 +1835,19 @@ bool has_identifier(const MetaFunctionEvalContext &EvalCtx) {
     HasIdentifier = TDMS->Name && !TDMS->Name->empty();
     break;
   }
-  case ReflectionKind::Null:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Annotation:
+  case ReflectionKind::TemplateParameter: {
+    std::string Name;
+    bool Consistent;
+    if (getTemplateParameterName(EvalCtx, RV.getReflectedTemplateParameter(),
+                                 Name, Consistent))
+      return true; // Diagnostic emitted
+    HasIdentifier = Consistent && !Name.empty();
     break;
+  }
   case ReflectionKind::EntityProxy:
     llvm_unreachable("proxies should already have been unwrapped");
+  default:
+    break;
   }
 
   return SetBoolAndSucceed(EvalCtx, HasIdentifier);
@@ -1915,6 +1952,8 @@ bool source_location_of(const MetaFunctionEvalContext &EvalCtx) {
   case ReflectionKind::Null:
   case ReflectionKind::DataMemberSpec:
     return findDeclLoc(EvalCtx, nullptr);
+  case ReflectionKind::TemplateParameter:
+    return findDeclLoc(EvalCtx, RV.getReflectedTemplateParameter());
   }
   llvm_unreachable("unknown reflection kind");
 }
@@ -1983,6 +2022,22 @@ bool type_of(const MetaFunctionEvalContext &EvalCtx) {
                      /*DropRefs=*/false);
     return SetReflectionAndSucceed(EvalCtx, QT);
   }
+  case ReflectionKind::TemplateParameter: {
+    Decl *D = RV.getReflectedTemplateParameter();
+
+    if (auto *NTTP = dyn_cast<NonTypeTemplateParmDecl>(D)) {
+      QualType QT = desugarType(NTTP->getType(),
+                                /*UnwrapAliases=*/true, /*DropCV=*/true,
+                                /*DropRefs=*/false);
+      return SetReflectionAndSucceed(EvalCtx, QT);
+    }
+
+    // TemplateTypeParmDecl, TemplateTemplateParmDecl do not have a "type"
+    // property
+    return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
+                             diag::metafn_no_associated_property)
+           << DescriptionOf(RV) << 0 << EvalCtx.Range;
+  }
   }
   llvm_unreachable("unknown reflection kind");
 }
@@ -2008,6 +2063,8 @@ bool parent_of(const MetaFunctionEvalContext &EvalCtx) {
   case ReflectionKind::Value:
   case ReflectionKind::DataMemberSpec:
   case ReflectionKind::Annotation:
+  // todo NTTP?
+  case ReflectionKind::TemplateParameter:
     if (EvalCtx.Diagnoser)
       return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
                                diag::metafn_no_associated_property)
@@ -2048,7 +2105,6 @@ bool parent_of(const MetaFunctionEvalContext &EvalCtx) {
     return DiagWrapper(parentOf(*EvalCtx.Result, RV.getReflectedEntityProxy()));
   case ReflectionKind::BaseSpecifier: {
     CXXRecordDecl *RD = RV.getReflectedBaseSpecifier()->getDerived();
-    // todo [merge:yukino:maybe-revert]
     QualType QT = desugarType(QualType(getTypeForDecl(RD), 0),
                               /*UnwrapAliases=*/true, /*DropCV=*/false,
                               /*DropRefs=*/false);
@@ -2076,6 +2132,8 @@ bool underlying_entity_of(const MetaFunctionEvalContext &EvalCtx) {
   case ReflectionKind::Parameter:
   case ReflectionKind::DataMemberSpec:
   case ReflectionKind::Annotation:
+  // todo NTTP?
+  case ReflectionKind::TemplateParameter:
     return SetAndSucceed(*EvalCtx.Result, RV);
   case ReflectionKind::Type: {
     QualType QT = RV.getReflectedType();
@@ -2104,25 +2162,15 @@ bool proxied_entity_of(const MetaFunctionEvalContext &EvalCtx) {
     return true;
 
   switch (RV.getReflectionKind()) {
-  case ReflectionKind::Null:
-  case ReflectionKind::Type:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Declaration:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::Template:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
-    return DiagnoseReflectionKind(EvalCtx.Diagnoser, EvalCtx.Range,
-                                  "an entity proxy");
   case ReflectionKind::EntityProxy:
     return SetAndSucceed(*EvalCtx.Result, MaybeUnproxy(*EvalCtx.C, RV, false));
+  default:
+    return DiagnoseReflectionKind(EvalCtx.Diagnoser, EvalCtx.Range,
+                                  "an entity proxy");
   }
-  llvm_unreachable("unknown reflection kind");
 }
 
+// todo: NTTP?
 bool object_of(const MetaFunctionEvalContext &EvalCtx) {
   CheckReflectionArg(EvalCtx, 0);
   CheckResultTyIsMetaInfo(EvalCtx);
@@ -2158,21 +2206,11 @@ bool object_of(const MetaFunctionEvalContext &EvalCtx) {
     APValue OV = Value.Lift(QualType{});
     return SetAndSucceed(*EvalCtx.Result, OV);
   }
-  case ReflectionKind::Null:
-  case ReflectionKind::Value:
-  case ReflectionKind::Type:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::EntityProxy:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::Template:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
+  default:
     return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
                              diag::metafn_cannot_query_property)
            << 1 << DescriptionOf(RV) << EvalCtx.Range;
   }
-  llvm_unreachable("unknown reflection kind");
 }
 
 bool constant_of(const MetaFunctionEvalContext &EvalCtx) {
@@ -2281,21 +2319,14 @@ bool constant_of(const MetaFunctionEvalContext &EvalCtx) {
     }
     return SetAndSucceed(*EvalCtx.Result, Constant.Lift(ConstantTy));
   }
-  case ReflectionKind::Null:
-  case ReflectionKind::Type:
-  case ReflectionKind::Template:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::EntityProxy:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::DataMemberSpec:
+  default:
     return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
                              diag::metafn_cannot_query_property)
            << 2 << DescriptionOf(RV) << EvalCtx.Range;
   }
-  llvm_unreachable("unknown reflection kind");
 }
 
+// todo: NTTP?
 bool template_of(const MetaFunctionEvalContext &EvalCtx) {
   CheckReflectionArg(EvalCtx, 0);
   CheckResultTyIsMetaInfo(EvalCtx);
@@ -2321,22 +2352,11 @@ bool template_of(const MetaFunctionEvalContext &EvalCtx) {
 
     return SetReflectionAndSucceed(EvalCtx, TName);
   }
-  case ReflectionKind::Null:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Template:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::EntityProxy:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
+  default:
     return DiagnoseReflectionKind(EvalCtx.Diagnoser, EvalCtx.Range,
                                   "a template specialization",
                                   DescriptionOf(RV));
-    return true;
   }
-  llvm_unreachable("unknown reflection kind");
 }
 
 bool CanActAsTemplateArg(const APValue &RV) {
@@ -2344,6 +2364,7 @@ bool CanActAsTemplateArg(const APValue &RV) {
   case ReflectionKind::Type:
   case ReflectionKind::Object:
   case ReflectionKind::Value:
+  case ReflectionKind::TemplateParameter:
     return true;
   case ReflectionKind::Declaration:
     return (!isa<FieldDecl>(RV.getReflectedDecl()));
@@ -2351,17 +2372,11 @@ bool CanActAsTemplateArg(const APValue &RV) {
     TemplateDecl *TDecl = RV.getReflectedTemplate().getAsTemplateDecl();
     return isa<ClassTemplateDecl, TypeAliasTemplateDecl>(TDecl);
   }
-  case ReflectionKind::Namespace:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
-  case ReflectionKind::Null:
-    return false;
   case ReflectionKind::EntityProxy:
     llvm_unreachable("expected proxies to have been unwrapped before calling");
+  default:
+    return false;
   }
-  llvm_unreachable("unknown reflection kind");
 }
 
 TemplateArgument TArgFromReflection(const MetaFunctionEvalContext &EvalCtx,
@@ -2406,9 +2421,14 @@ TemplateArgument TArgFromReflection(const MetaFunctionEvalContext &EvalCtx,
   }
   case ReflectionKind::Template:
     return {RV.getReflectedTemplate()};
-    break;
   case ReflectionKind::EntityProxy:
     llvm_unreachable("expected proxies to have been unwrapped before calling");
+  case ReflectionKind::TemplateParameter:
+    // Usagi Ext: Parameters as arguments (meta::info values).
+    // We construct a TemplateArgument holding the StructuralValue (the APValue
+    // itself). This allows Sema to reconstruct it later if needed, but avoids
+    // immediate expression overhead.
+    return TemplateArgument(*EvalCtx.C, EvalCtx.C->MetaInfoTy, RV);
   default:
     llvm_unreachable("unimplemented for template argument kind");
   }
@@ -2559,7 +2579,33 @@ bool substitute(const MetaFunctionEvalContext &EvalCtx) {
 
     VarDecl *Spec =
         EvalCtx.Meta->Substitute(VTD, TArgs, EvalCtx.Range.getBegin());
-    assert(Spec && "substitution failed after validating arguments?");
+    // assert(Spec && "substitution failed after validating arguments?");
+
+    // Handle substitution failure gracefully
+    if (!Spec) {
+      if (NoDiagnose)
+        return ElideDiagnosis();
+
+      // Format the arguments for the diagnostic: "<Arg1, Arg2, ...>"
+      std::string ArgStr;
+      llvm::raw_string_ostream OS(ArgStr);
+      OS << '<';
+      PrintingPolicy Policy = EvalCtx.C->getPrintingPolicy();
+      // Ensure we print types for literals to avoid confusion (e.g. 0 vs 0u)
+      Policy.ConstantsAsWritten = true;
+
+      for (unsigned I = 0, N = TArgs.size(); I != N; ++I) {
+        if (I != 0)
+          OS << ", ";
+        // IncludeType=true helps distinguish values like 1 (int) vs 1 (long)
+        TArgs[I].print(Policy, OS, /*IncludeType=*/true);
+      }
+      OS << '>';
+
+      return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
+                               diag::metafn_substitution_failure_with_args)
+             << TDecl << ArgStr << EvalCtx.Range;
+    }
 
     APValue RV = makeReflection(Spec);
     // EvalCtx.C->recordCachedSubstitution(SubstitutionHash, RV);
@@ -2836,19 +2882,11 @@ bool extract(const MetaFunctionEvalContext &EvalCtx) {
                            APValue(Decl, CharUnits::Zero(), {}, false, false));
     }
   }
-  case ReflectionKind::Null:
-  case ReflectionKind::Type:
-  case ReflectionKind::Template:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::EntityProxy:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::DataMemberSpec:
+  default:
     return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
                              diag::metafn_cannot_extract)
            << (ReturnsLValue ? 1 : 0) << DescriptionOf(RV) << EvalCtx.Range;
   }
-  llvm_unreachable("invalid reflection type");
 }
 
 template <AccessSpecifier Specifier>
@@ -2888,20 +2926,14 @@ bool is_ACCESS(const MetaFunctionEvalContext &EvalCtx) {
     bool HasTargetAccess = (Base->getAccessSpecifier() == Specifier);
     return SetBoolAndSucceed(EvalCtx, HasTargetAccess);
   }
-  case ReflectionKind::Null:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::Annotation:
-  case ReflectionKind::Namespace:
+  default:
     return SetBoolAndSucceed(EvalCtx, false);
   }
-  llvm_unreachable("invalid reflection type");
+  // llvm_unreachable("invalid reflection type");
 }
 
 template <AccessSpecifier AS>
-inline bool is_ClassMember_ACCESS(const MetaFunctionEvalContext &EvalCtx) {
+bool is_ClassMember_ACCESS(const MetaFunctionEvalContext &EvalCtx) {
   [[maybe_unused]] bool scratch = is_class_member(EvalCtx);
 
   if (const bool isClassMember = EvalCtx.Result->getInt().getBoolValue();
@@ -2948,19 +2980,10 @@ bool is_virtual(const MetaFunctionEvalContext &EvalCtx) {
     IsVirtual = RV.getReflectedBaseSpecifier()->isVirtual();
     return SetBoolAndSucceed(EvalCtx, IsVirtual);
   }
-  case ReflectionKind::Null:
-  case ReflectionKind::Type:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Template:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::EntityProxy:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
+  default:
     return SetBoolAndSucceed(EvalCtx, IsVirtual);
   }
-  llvm_unreachable("invalid reflection type");
+  // llvm_unreachable("invalid reflection type");
 }
 
 bool is_pure_virtual(const MetaFunctionEvalContext &EvalCtx) {
@@ -3128,6 +3151,7 @@ bool is_final(const MetaFunctionEvalContext &EvalCtx) {
   return SetBoolAndSucceed(EvalCtx, result);
 }
 
+// todo: template parameters?
 bool is_const(const MetaFunctionEvalContext &EvalCtx) {
   CheckReflectionArg(EvalCtx, 0);
   CheckResultTyIsBool(EvalCtx);
@@ -3163,6 +3187,7 @@ bool is_const(const MetaFunctionEvalContext &EvalCtx) {
   llvm_unreachable("invalid reflection type");
 }
 
+// todo: template parameters?
 bool is_volatile(const MetaFunctionEvalContext &EvalCtx) {
   CheckReflectionArg(EvalCtx, 0);
   CheckResultTyIsBool(EvalCtx);
@@ -3506,20 +3531,11 @@ bool is_static_member(const MetaFunctionEvalContext &EvalCtx) {
     }
     return SetBoolAndSucceed(EvalCtx, result);
   }
-  case ReflectionKind::Null:
-  case ReflectionKind::Type:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
-    return SetBoolAndSucceed(EvalCtx, result);
   case ReflectionKind::EntityProxy:
     llvm_unreachable("proxies should already have been unwrapped");
+  default:
+    return SetBoolAndSucceed(EvalCtx, result);
   }
-  llvm_unreachable("unknown reflection kind");
 }
 
 bool is_base(const MetaFunctionEvalContext &EvalCtx) {
@@ -3594,6 +3610,7 @@ bool is_type(const MetaFunctionEvalContext &EvalCtx) {
   return SetBoolAndSucceed(EvalCtx, RV.isReflectedType());
 }
 
+// todo template parameter?
 bool is_alias(const MetaFunctionEvalContext &EvalCtx) {
   CheckReflectionArg(EvalCtx, 0);
   CheckResultTyIsBool(EvalCtx);
@@ -3616,18 +3633,9 @@ bool is_alias(const MetaFunctionEvalContext &EvalCtx) {
     bool result = isa<TypeAliasTemplateDecl>(TDecl);
     return SetBoolAndSucceed(EvalCtx, result);
   }
-  case ReflectionKind::Null:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Declaration:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::Annotation:
-  case ReflectionKind::EntityProxy:
+  default:
     return SetBoolAndSucceed(EvalCtx, false);
   }
-  llvm_unreachable("unknown reflection kind");
 }
 
 bool is_entity_proxy(const MetaFunctionEvalContext &EvalCtx) {
@@ -3661,6 +3669,7 @@ bool is_complete_type(const MetaFunctionEvalContext &EvalCtx) {
   return SetBoolAndSucceed(EvalCtx, result);
 }
 
+// todo template parameter?
 bool has_complete_definition(const MetaFunctionEvalContext &EvalCtx) {
   CheckReflectionArg(EvalCtx, 0);
   CheckResultTyIsBool(EvalCtx);
@@ -3684,23 +3693,14 @@ bool has_complete_definition(const MetaFunctionEvalContext &EvalCtx) {
           (FD->getDefinition() != nullptr && FD->getDefinition()->hasBody());
     break;
   }
-  case ReflectionKind::Null:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Template:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
-    break;
   case ReflectionKind::EntityProxy:
     llvm_unreachable("proxies should already have been unwrapped");
+  default:
+    SetBoolAndSucceed(EvalCtx, result);
   }
-
-  return SetBoolAndSucceed(EvalCtx, result);
 }
 
+// todo NTTP?
 bool is_enumerable_type(const MetaFunctionEvalContext &EvalCtx) {
   CheckReflectionArg(EvalCtx, 0);
   CheckResultTyIsBool(EvalCtx);
@@ -3720,24 +3720,14 @@ bool is_enumerable_type(const MetaFunctionEvalContext &EvalCtx) {
       }
     }
     break;
-  case ReflectionKind::Null:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Declaration:
-  case ReflectionKind::Template:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
-    break;
   case ReflectionKind::EntityProxy:
     llvm_unreachable("proxies should already have been unwrapped");
+  default:
+    SetBoolAndSucceed(EvalCtx, result);
   }
-
-  return SetBoolAndSucceed(EvalCtx, result);
 }
 
+// todo: template template parameter?
 bool is_template(const MetaFunctionEvalContext &EvalCtx) {
   CheckReflectionArg(EvalCtx, 0);
   CheckResultTyIsBool(EvalCtx);
@@ -3939,6 +3929,7 @@ bool is_object(const MetaFunctionEvalContext &EvalCtx) {
   return SetBoolAndSucceed(EvalCtx, IsObject);
 }
 
+// todo: NTTP?
 bool has_template_arguments(const MetaFunctionEvalContext &EvalCtx) {
   CheckReflectionArg(EvalCtx, 0);
   CheckResultTyIsBool(EvalCtx);
@@ -3964,19 +3955,9 @@ bool has_template_arguments(const MetaFunctionEvalContext &EvalCtx) {
 
     return SetBoolAndSucceed(EvalCtx, result);
   }
-  case ReflectionKind::Null:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Template:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::EntityProxy:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
+  default:
     return SetBoolAndSucceed(EvalCtx, false);
   }
-  llvm_unreachable("unknown reflection kind");
 }
 
 bool has_default_member_initializer(const MetaFunctionEvalContext &EvalCtx) {
@@ -4052,25 +4033,15 @@ bool is_constructor(const MetaFunctionEvalContext &EvalCtx) {
     return true;
 
   switch (RV.getReflectionKind()) {
-  case ReflectionKind::Null:
-  case ReflectionKind::Type:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::Template:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
-    return SetBoolAndSucceed(EvalCtx, false);
   case ReflectionKind::Declaration: {
     bool result = isa<CXXConstructorDecl>(RV.getReflectedDecl());
     return SetBoolAndSucceed(EvalCtx, result);
   }
   case ReflectionKind::EntityProxy:
     llvm_unreachable("proxies should already have been unwrapped");
+  default:
+    return SetBoolAndSucceed(EvalCtx, false);
   }
-  llvm_unreachable("invalid reflection type");
 }
 
 bool is_default_constructor(const MetaFunctionEvalContext &EvalCtx) {
@@ -4178,25 +4149,16 @@ bool is_destructor(const MetaFunctionEvalContext &EvalCtx) {
     return true;
 
   switch (RV.getReflectionKind()) {
-  case ReflectionKind::Null:
-  case ReflectionKind::Type:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Template:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
-    return SetBoolAndSucceed(EvalCtx, false);
   case ReflectionKind::Declaration: {
     bool result = isa<CXXDestructorDecl>(RV.getReflectedDecl());
     return SetBoolAndSucceed(EvalCtx, result);
   }
   case ReflectionKind::EntityProxy:
     llvm_unreachable("proxies should already have been unwrapped");
+  default:
+    return SetBoolAndSucceed(EvalCtx, false);
   }
-  llvm_unreachable("invalid reflection type");
+  // llvm_unreachable("invalid reflection type");
 }
 
 bool is_special_member_function(const MetaFunctionEvalContext &EvalCtx) {
@@ -4208,16 +4170,6 @@ bool is_special_member_function(const MetaFunctionEvalContext &EvalCtx) {
     return true;
 
   switch (RV.getReflectionKind()) {
-  case ReflectionKind::Null:
-  case ReflectionKind::Type:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
-    return SetBoolAndSucceed(EvalCtx, false);
   case ReflectionKind::Declaration: {
     bool IsSpecial = false;
     if (auto *FD = dyn_cast<FunctionDecl>(RV.getReflectedDecl()))
@@ -4234,8 +4186,10 @@ bool is_special_member_function(const MetaFunctionEvalContext &EvalCtx) {
   }
   case ReflectionKind::EntityProxy:
     llvm_unreachable("proxies should already have been unwrapped");
+  default:
+    return SetBoolAndSucceed(EvalCtx, false);
   }
-  llvm_unreachable("invalid reflection type");
+  // llvm_unreachable("invalid reflection type");
 }
 
 bool is_user_provided(const MetaFunctionEvalContext &EvalCtx) {
@@ -4306,7 +4260,7 @@ bool reflect_result(const MetaFunctionEvalContext &EvalCtx) {
   //   otherwise ICE when e.g., checking source location of the ConstantExpr)
   // - An OpaqueValueExpr wrapper around the ConstantExpr to prevent
   //   EvaluateAsConstantExpr from grabbing 'Arg' and short-circuiting the
-  //   evaluation (and, more imporantly, the result validation).
+  //   evaluation (and, more importantly, the result validation).
   Expr *OVE = new (*EvalCtx.C)
       OpaqueValueExpr(EvalCtx.Range.getBegin(), EvalCtx.Args[1]->getType(),
                       IsLValue ? VK_LValue : VK_PRValue);
@@ -4551,19 +4505,6 @@ bool offset_of(const MetaFunctionEvalContext &EvalCtx) {
     return true;
 
   switch (RV.getReflectionKind()) {
-  case ReflectionKind::Null:
-  case ReflectionKind::Type:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Template:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::EntityProxy:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
-    return DiagnoseReflectionKind(EvalCtx.Diagnoser, EvalCtx.Range,
-                                  "a non-static data member",
-                                  DescriptionOf(RV));
   case ReflectionKind::Declaration: {
     if (const FieldDecl *FD = dyn_cast<FieldDecl>(RV.getReflectedDecl())) {
       size_t Offset = getBitOffsetOfField(*EvalCtx.C, FD) /
@@ -4586,10 +4527,14 @@ bool offset_of(const MetaFunctionEvalContext &EvalCtx) {
     return SetAndSucceed(*EvalCtx.Result, APValue(EvalCtx.C->MakeIntValue(
                                               Offset, EvalCtx.ResultTy)));
   }
+  default:
+    return DiagnoseReflectionKind(EvalCtx.Diagnoser, EvalCtx.Range,
+                                  "a non-static data member",
+                                  DescriptionOf(RV));
   }
-  llvm_unreachable("unknown reflection kind");
 }
 
+// todo: NTTP?
 bool size_of(const MetaFunctionEvalContext &EvalCtx) {
   CheckReflectionArg(EvalCtx, 0);
   CheckResultTyIsSizeT(EvalCtx);
@@ -4632,18 +4577,11 @@ bool size_of(const MetaFunctionEvalContext &EvalCtx) {
     TagDataMemberSpec *TDMS = RV.getReflectedDataMemberSpec();
     return SetSizeAndSucceed(TDMS->Ty);
   }
-  case ReflectionKind::Null:
-  case ReflectionKind::Template:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::EntityProxy:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::Annotation:
+  default:
     return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
                              diag::metafn_cannot_query_property)
            << 3 << DescriptionOf(RV);
   }
-  llvm_unreachable("unknown reflection kind");
 }
 
 bool bit_offset_of(const MetaFunctionEvalContext &EvalCtx) {
@@ -4734,19 +4672,11 @@ bool bit_size_of(const MetaFunctionEvalContext &EvalCtx) {
     size_t Sz = TDMS->BitWidth.value_or(EvalCtx.C->getTypeSize(TDMS->Ty));
     return SetSizeAndSucceed(Sz);
   }
-
-  case ReflectionKind::Null:
-  case ReflectionKind::Template:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::EntityProxy:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::Annotation:
+  default:
     return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
                              diag::metafn_cannot_query_property)
            << 3 << DescriptionOf(RV);
   }
-  llvm_unreachable("unknown reflection kind");
 }
 
 bool alignment_of(const MetaFunctionEvalContext &EvalCtx) {
@@ -4803,18 +4733,11 @@ bool alignment_of(const MetaFunctionEvalContext &EvalCtx) {
         *EvalCtx.Result,
         APValue(EvalCtx.C->MakeIntValue(Align, EvalCtx.C->getSizeType())));
   }
-  case ReflectionKind::Null:
-  case ReflectionKind::Template:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::EntityProxy:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::Annotation:
+  default:
     return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
                              diag::metafn_cannot_query_property)
            << 4 << DescriptionOf(RV) << EvalCtx.Range;
   }
-  llvm_unreachable("unknown reflection kind");
 }
 
 bool get_ith_parameter_of(const MetaFunctionEvalContext &EvalCtx) {
@@ -4856,6 +4779,7 @@ bool get_ith_parameter_of(const MetaFunctionEvalContext &EvalCtx) {
 
       return SetReflectionAndSucceed(EvalCtx, FD->getParamDecl(idx));
     }
+    // todo: validate code path
     // Template Parameters (Class/Var/Alias Templates reflected as Decls)
     if (TemplateDecl *TD = dyn_cast<TemplateDecl>(RV.getReflectedDecl())) {
       TemplateParameterList *TPL = TD->getTemplateParameters();
@@ -4864,10 +4788,9 @@ bool get_ith_parameter_of(const MetaFunctionEvalContext &EvalCtx) {
 
       return SetReflectionAndSucceed(EvalCtx, TPL->getParam(idx));
     }
-    return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
-                             diag::metafn_cannot_query_property)
-           << 5 << DescriptionOf(RV) << EvalCtx.Range;
+    break;
   }
+  // todo: validate code path
   case ReflectionKind::Template: {
     TemplateName TN = RV.getReflectedTemplate();
     // Convert the TemplateName to the underlying declaration
@@ -4877,9 +4800,7 @@ bool get_ith_parameter_of(const MetaFunctionEvalContext &EvalCtx) {
     // fixes) or a DependentTemplateName that can't be resolved, we can't
     // inspect parameters.
     if (!TD) {
-      return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
-                               diag::metafn_cannot_query_property)
-             << 5 << DescriptionOf(RV) << EvalCtx.Range;
+      break;
     }
 
     // Access the list of <typename T, int N, template<...> class C>
@@ -4892,15 +4813,22 @@ bool get_ith_parameter_of(const MetaFunctionEvalContext &EvalCtx) {
     // etc.
     return SetReflectionAndSucceed(EvalCtx, TPL->getParam(idx));
   }
-  case ReflectionKind::Null:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::EntityProxy:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
+  // todo: validate code path
+  case ReflectionKind::TemplateParameter: {
+    // Usagi Ext: Handle TemplateTemplateParmDecl (which has parameters)
+    Decl *D = RV.getReflectedTemplateParameter();
+    if (auto *TTP = dyn_cast<TemplateTemplateParmDecl>(D)) {
+      TemplateParameterList *TPL = TTP->getTemplateParameters();
+      if (idx >= TPL->size())
+        return SetAndSucceed(*EvalCtx.Result, Sentinel);
+
+      return SetReflectionAndSucceed(EvalCtx, TPL->getParam(idx));
+    }
+    // Other template parameters (Type/NonType) do not have nested parameters.
+    break;
+  }
+#pragma endregion
+  default:
     return true;
   }
   return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
@@ -4917,19 +4845,6 @@ bool has_ellipsis_parameter(const MetaFunctionEvalContext &EvalCtx) {
     return true;
 
   switch (RV.getReflectionKind()) {
-  case ReflectionKind::Null:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Template:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::EntityProxy:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
-    return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
-                             diag::metafn_cannot_query_property)
-           << 5 << DescriptionOf(RV) << EvalCtx.Range;
   case ReflectionKind::Type:
     if (auto *FPT = dyn_cast<FunctionProtoType>(RV.getReflectedType())) {
       bool HasEllipsis = FPT->isVariadic();
@@ -4947,8 +4862,11 @@ bool has_ellipsis_parameter(const MetaFunctionEvalContext &EvalCtx) {
                              diag::metafn_cannot_query_property)
            << 5 << DescriptionOf(RV) << EvalCtx.Range;
   }
+  default:
+    return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
+                             diag::metafn_cannot_query_property)
+           << 5 << DescriptionOf(RV) << EvalCtx.Range;
   }
-  llvm_unreachable("unknown reflection kind");
 }
 
 bool has_default_argument(const MetaFunctionEvalContext &EvalCtx) {
@@ -4961,24 +4879,29 @@ bool has_default_argument(const MetaFunctionEvalContext &EvalCtx) {
 
   switch (RV.getReflectionKind()) {
   case ReflectionKind::Parameter: {
-    ParmVarDecl *PVD = getMostRecentParmVarDecl(RV.getReflectedParameter());
+    // We must find the most recent decl to see the default arg if it was added
+    // in a redeclaration.
+    ParmVarDecl *PVD = dyn_cast<ParmVarDecl>(RV.getReflectedParameter());
+    PVD = getMostRecentParmVarDecl(EvalCtx, PVD);
+    if (!PVD)
+      return true; // Diagnostic emitted by helper
     return SetBoolAndSucceed(EvalCtx, PVD->hasDefaultArg());
   }
-  case ReflectionKind::Declaration:
-  case ReflectionKind::Null:
-  case ReflectionKind::Type:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Template:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::EntityProxy:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
+  case ReflectionKind::TemplateParameter: {
+    Decl *D = RV.getReflectedTemplateParameter();
+    if (auto *TTP = dyn_cast<TemplateTypeParmDecl>(D))
+      return SetBoolAndSucceed(EvalCtx, TTP->hasDefaultArgument());
+    if (auto *NTTP = dyn_cast<NonTypeTemplateParmDecl>(D))
+      return SetBoolAndSucceed(EvalCtx, NTTP->hasDefaultArgument());
+    if (auto *TTP2 = dyn_cast<TemplateTemplateParmDecl>(D))
+      return SetBoolAndSucceed(EvalCtx, TTP2->hasDefaultArgument());
+
+    return SetBoolAndSucceed(EvalCtx, false);
+  }
+  default:
     return DiagnoseReflectionKind(EvalCtx.Diagnoser, EvalCtx.Range,
                                   "a function parameter", DescriptionOf(RV));
   }
-  llvm_unreachable("unknown reflection kind");
 }
 
 bool is_explicit_object_parameter(const MetaFunctionEvalContext &EvalCtx) {
@@ -5034,21 +4957,11 @@ bool return_type_of(const MetaFunctionEvalContext &EvalCtx) {
       return SetReflectionAndSucceed(EvalCtx, QT);
     }
     [[fallthrough]];
-  case ReflectionKind::Null:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Template:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::EntityProxy:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
+  default:
     return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
                              diag::metafn_cannot_query_property)
            << 6 << DescriptionOf(RV) << EvalCtx.Range;
   }
-  llvm_unreachable("unknown reflection kind");
 }
 
 bool variable_of(const MetaFunctionEvalContext &EvalCtx) {
@@ -5138,18 +5051,12 @@ bool get_ith_annotation_of(const MetaFunctionEvalContext &EvalCtx) {
 
     return SetAndSucceed(*EvalCtx.Result, findAnnotation(D, idx, Sentinel));
   }*/
-  case ReflectionKind::Null:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
+  [[fallthrough]];
+  default:
     return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
                              diag::metafn_cannot_query_property)
            << 7 << DescriptionOf(RV) << EvalCtx.Range;
   }
-  llvm_unreachable("unknown reflection kind");
 }
 
 bool is_annotation(const MetaFunctionEvalContext &EvalCtx) {
@@ -5209,20 +5116,11 @@ bool annotate(const MetaFunctionEvalContext &EvalCtx) {
       return SetReflectionAndSucceed(EvalCtx, Annot);
     return true;
   }
-  case ReflectionKind::Null:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Template:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
-  case ReflectionKind::EntityProxy:
+  default:
     return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
                              diag::metafn_cannot_annotate)
            << DescriptionOf(Appertainee) << EvalCtx.Range;
   }
-  llvm_unreachable("unknown reflection kind");
 }
 
 bool current_access_context(const MetaFunctionEvalContext &EvalCtx) {
@@ -5386,16 +5284,10 @@ bool is_accessible(const MetaFunctionEvalContext &EvalCtx) {
                                        EvalCtx.Range.getBegin());
     return SetBoolAndSucceed(EvalCtx, Accessible);
   }
-  case ReflectionKind::Null:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
+  default:
     return SetBoolAndSucceed(EvalCtx, true);
   }
-  llvm_unreachable("invalid reflection type");
+  // llvm_unreachable("invalid reflection type");
 }
 
 bool is_access_specified(const MetaFunctionEvalContext &EvalCtx) {
@@ -5445,16 +5337,10 @@ bool is_access_specified(const MetaFunctionEvalContext &EvalCtx) {
     bool IsSpecified = (Base->getAccessSpecifierAsWritten() != AS_none);
     return SetBoolAndSucceed(EvalCtx, IsSpecified);
   }
-  case ReflectionKind::Null:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
+  default:
     return SetBoolAndSucceed(EvalCtx, false);
   }
-  llvm_unreachable("invalid reflection type");
+  // llvm_unreachable("invalid reflection type");
 }
 
 bool is_nonstatic_member_function(ValueDecl *FD) {
@@ -5624,16 +5510,6 @@ bool reflect_invoke(const MetaFunctionEvalContext &EvalCtx) {
 
   Expr *FnRefExpr = nullptr;
   switch (FnRefl.getReflectionKind()) {
-  case ReflectionKind::Null:
-  case ReflectionKind::Type:
-  case ReflectionKind::Namespace:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
-    return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
-                             diag::metafn_cannot_invoke)
-           << DescriptionOf(FnRefl) << EvalCtx.Range;
   case ReflectionKind::Object: {
     Expr *OVE = new (*EvalCtx.C)
         OpaqueValueExpr(EvalCtx.Range.getBegin(),
@@ -5697,6 +5573,10 @@ bool reflect_invoke(const MetaFunctionEvalContext &EvalCtx) {
   }
   case ReflectionKind::EntityProxy:
     llvm_unreachable("proxies should already have been unwrapped");
+  default:
+    return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
+                             diag::metafn_cannot_invoke)
+           << DescriptionOf(FnRefl) << EvalCtx.Range;
   }
 
   Expr *CallExpr;
@@ -5814,6 +5694,187 @@ bool reflect_invoke(const MetaFunctionEvalContext &EvalCtx) {
   return SetAndSucceed(*EvalCtx.Result,
                        EvalResult.Val.Lift(CallExpr->getType()));
 }
+
+// ============================================
+// Usagi MetaFunction Extensions Implementation
+// ============================================
+
+#pragma region Usagi MetaFunction Extensions Implementation
+// Returns true if an error occurred (diagnostic emitted).
+// Sets 'Consistent' to false if the name is inconsistent across redeclarations.
+bool getTemplateParameterName(const MetaFunctionEvalContext &EvalCtx,
+                              const Decl *D, std::string &Out,
+                              bool &Consistent) {
+  Consistent = true;
+
+  if (const auto *ND = dyn_cast<NamedDecl>(D)) {
+    unsigned Index = 0;
+    if (const auto *TTP = dyn_cast<TemplateTypeParmDecl>(ND))
+      Index = TTP->getIndex();
+    else if (const auto *NTTP = dyn_cast<NonTypeTemplateParmDecl>(ND))
+      Index = NTTP->getIndex();
+    else if (const auto *TTP = dyn_cast<TemplateTemplateParmDecl>(ND))
+      Index = TTP->getIndex();
+    else {
+      Out = ND->getNameAsString();
+      return false;
+    }
+
+    const auto *DC = ND->getDeclContext();
+    if (const auto *RTD = dyn_cast<RedeclarableTemplateDecl>(DC)) {
+      Consistent = true;
+      StringRef FirstNameSeen = ND->getName();
+
+      const RedeclarableTemplateDecl *Cur = RTD->getMostRecentDecl();
+      while (Cur) {
+        if (auto *Params = Cur->getTemplateParameters()) {
+          if (Index < Params->size()) {
+            const NamedDecl *Param = Params->getParam(Index);
+            if (IdentifierInfo *II = Param->getIdentifier()) {
+              if (FirstNameSeen.empty()) {
+                FirstNameSeen = II->getName();
+              } else if (II->getName() != FirstNameSeen) {
+                Consistent = false;
+                break;
+              }
+            }
+          }
+        }
+        Cur = Cur->getPreviousDecl();
+      }
+      Out = FirstNameSeen;
+      return false;
+    }
+
+    Out = ND->getNameAsString();
+    return false;
+  }
+
+  return false;
+}
+
+// bool template_parameters_of(const MetaFunctionEvalContext &EvalCtx);
+// Forward to the generic parameter retrieval which handles templates
+// todo
+bool get_ith_template_parameters_of(const MetaFunctionEvalContext &EvalCtx) {
+  return get_ith_parameter_of(EvalCtx);
+}
+
+bool is_type_template_parameter(const MetaFunctionEvalContext &EvalCtx) {
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
+
+  APValue RV;
+  if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
+    return true;
+
+  if (RV.getReflectionKind() == ReflectionKind::TemplateParameter) {
+    if (isa<TemplateTypeParmDecl>(RV.getReflectedTemplateParameter()))
+      return SetBoolAndSucceed(EvalCtx, true);
+  }
+
+  return SetBoolAndSucceed(EvalCtx, false);
+}
+
+bool is_non_type_template_parameter(const MetaFunctionEvalContext &EvalCtx) {
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
+
+  APValue RV;
+  if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
+    return true;
+
+  if (RV.getReflectionKind() == ReflectionKind::TemplateParameter) {
+    if (isa<NonTypeTemplateParmDecl>(RV.getReflectedTemplateParameter()))
+      return SetBoolAndSucceed(EvalCtx, true);
+  }
+
+  return SetBoolAndSucceed(EvalCtx, false);
+}
+
+bool is_template_template_parameter(const MetaFunctionEvalContext &EvalCtx) {
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
+
+  APValue RV;
+  if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
+    return true;
+
+  if (RV.getReflectionKind() == ReflectionKind::TemplateParameter) {
+    if (isa<TemplateTemplateParmDecl>(RV.getReflectedTemplateParameter()))
+      return SetBoolAndSucceed(EvalCtx, true);
+  }
+
+  return SetBoolAndSucceed(EvalCtx, false);
+}
+
+bool is_template_parameter_pack(const MetaFunctionEvalContext &EvalCtx) {
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsBool(EvalCtx);
+
+  APValue RV;
+  if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
+    return true;
+
+  if (RV.getReflectionKind() == ReflectionKind::TemplateParameter) {
+    Decl *D = RV.getReflectedTemplateParameter();
+    if (auto *TTP = dyn_cast<TemplateTypeParmDecl>(D))
+      return SetBoolAndSucceed(EvalCtx, TTP->isParameterPack());
+    if (auto *NTTP = dyn_cast<NonTypeTemplateParmDecl>(D))
+      return SetBoolAndSucceed(EvalCtx, NTTP->isParameterPack());
+  } else if (RV.getReflectionKind() == ReflectionKind::Template) {
+    TemplateName TN = RV.getReflectedTemplate();
+    if (auto *TD = TN.getAsTemplateDecl()) {
+      if (auto *TTP = dyn_cast<TemplateTemplateParmDecl>(TD))
+        return SetBoolAndSucceed(EvalCtx, TTP->isParameterPack());
+    }
+  }
+
+  // Not a template parameter, so strictly not a template parameter pack.
+  return SetBoolAndSucceed(EvalCtx, false);
+}
+
+bool type_constraint_of(const MetaFunctionEvalContext &EvalCtx) {
+  CheckReflectionArg(EvalCtx, 0);
+  CheckResultTyIsMetaInfo(EvalCtx);
+
+  APValue RV;
+  if (!EvalCtx.Evaluator(RV, EvalCtx.Args[0], true))
+    return true;
+
+  NamedDecl *Concept = nullptr;
+
+  if (RV.getReflectionKind() == ReflectionKind::TemplateParameter) {
+    Decl *D = RV.getReflectedTemplateParameter();
+
+    // Case 1: typename T (TemplateTypeParmDecl)
+    // e.g., template <Concept T>
+    if (auto *TTP = dyn_cast<TemplateTypeParmDecl>(D)) {
+      if (const TypeConstraint *TC = TTP->getTypeConstraint())
+        Concept = TC->getNamedConcept();
+    }
+    // Case 2: int N (NonTypeTemplateParmDecl)
+    // e.g., template <Concept auto N>
+    else if (auto *NTTP = dyn_cast<NonTypeTemplateParmDecl>(D)) {
+      QualType T = NTTP->getType();
+      if (const AutoType *AT = T->getContainedAutoType()) {
+        if (TemplateDecl *CD = AT->getTypeConstraintConcept())
+          Concept = CD;
+      }
+    }
+  }
+
+  // TemplateTemplateParmDecl (ReflectionKind::Template) logic could go here
+  // if standard C++ allows direct constraints on them in a way that maps
+  // to a NamedConcept. (Currently mostly handles params inside the
+  // template-head).
+
+  if (Concept)
+    return SetReflectionAndSucceed(EvalCtx, Concept);
+
+  return SetReflectionAndSucceed(EvalCtx, nullptr);
+}
+#pragma endregion
 } // namespace
 
 // -----------------------------------------------------------------------------

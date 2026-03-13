@@ -110,8 +110,13 @@ enum class ReflectionKind {
   /// but the current design seems tolerable for now.
   DataMemberSpec,
 
-  /// \brief A reflection of an annotation (P2996 ext).
+  /// \brief A reflection of an annotation.
   Annotation,
+
+  /// \brief A reflection of a template parameter.
+  ///
+  /// Corresponds to a Decl.
+  TemplateParameter,
 };
 
 

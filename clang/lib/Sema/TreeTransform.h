@@ -13165,8 +13165,9 @@ StmtResult TreeTransform<Derived>::TransformUnresolvedSYCLKernelCallStmt(
   return SR;
 }
 
-template <typename Derived>
-ExprResult TreeTransform<Derived>::TransformCXXReflectExpr(CXXReflectExpr *E) {
+template<typename Derived>
+ExprResult
+TreeTransform<Derived>::TransformCXXReflectExpr(CXXReflectExpr *E) {
   Sema::ConstevalOnlyRecorder RecordConstevalOnly(getSema());
   EnterExpressionEvaluationContext Context(
       getSema(), Sema::ExpressionEvaluationContext::ReflectionContext);
@@ -13254,6 +13255,7 @@ ExprResult TreeTransform<Derived>::TransformCXXReflectExpr(CXXReflectExpr *E) {
                                           E->getOperandRange().getBegin(),
                                           cast<UsingShadowDecl>(Transformed)));
   }
+  // todo handle template parameter reflection
   case ReflectionKind::Parameter: {
     Decl *Transformed = getDerived().TransformDecl(E->getExprLoc(),
                                                    RV.getReflectedParameter());
@@ -13284,7 +13286,8 @@ ExprResult TreeTransform<Derived>::TransformCXXReflectExpr(CXXReflectExpr *E) {
 }
 
 template <typename Derived>
-ExprResult TreeTransform<Derived>::TransformCXXMetafunctionExpr(CXXMetafunctionExpr *E) {
+ExprResult
+TreeTransform<Derived>::TransformCXXMetafunctionExpr(CXXMetafunctionExpr *E) {
   SmallVector<Expr *, 2> Args(E->getNumArgs());
   for (unsigned I = 0; I < E->getNumArgs(); ++I) {
     ExprResult Arg = getDerived().TransformExpr(E->getArg(I));
@@ -13301,7 +13304,8 @@ ExprResult TreeTransform<Derived>::TransformCXXMetafunctionExpr(CXXMetafunctionE
 }
 
 template <typename Derived>
-SpliceResult TreeTransform<Derived>::TransformSpliceSpecifier(SpliceSpecifier *Splice) {
+SpliceResult
+TreeTransform<Derived>::TransformSpliceSpecifier(SpliceSpecifier *Splice) {
   ExprResult OpResult;
   {
     EnterExpressionEvaluationContext EvalCtx(
@@ -13334,7 +13338,8 @@ SpliceResult TreeTransform<Derived>::TransformSpliceSpecifier(SpliceSpecifier *S
 }
 
 template <typename Derived>
-ExprResult TreeTransform<Derived>::TransformCXXSpliceExpr(CXXSpliceExpr *E) {
+ExprResult
+TreeTransform<Derived>::TransformCXXSpliceExpr(CXXSpliceExpr *E) {
   SpliceResult SR = TransformSpliceSpecifier(E->getSplice());
   if (SR.isInvalid())
     return ExprError();
@@ -13345,8 +13350,9 @@ ExprResult TreeTransform<Derived>::TransformCXXSpliceExpr(CXXSpliceExpr *E) {
 }
 
 template <typename Derived>
-ExprResult TreeTransform<Derived>::TransformCXXDependentMemberSpliceExpr(
-    CXXDependentMemberSpliceExpr *E) {
+ExprResult
+TreeTransform<Derived>::TransformCXXDependentMemberSpliceExpr(
+                                              CXXDependentMemberSpliceExpr *E) {
   ExprResult Base = getDerived().TransformExpr(E->getBase());
   ExprResult RHS = getDerived().TransformExpr(E->getRHS());
   if (Base.isInvalid() || RHS.isInvalid())
@@ -13359,12 +13365,14 @@ ExprResult TreeTransform<Derived>::TransformCXXDependentMemberSpliceExpr(
 }
 
 template <typename Derived>
-ExprResult TreeTransform<Derived>::TransformStackLocationExpr(StackLocationExpr *E) {
+ExprResult
+TreeTransform<Derived>::TransformStackLocationExpr(StackLocationExpr *E) {
   return E;
 }
 
 template <typename Derived>
-ExprResult TreeTransform<Derived>::TransformExtractLValueExpr(ExtractLValueExpr *E) {
+ExprResult
+TreeTransform<Derived>::TransformExtractLValueExpr(ExtractLValueExpr *E) {
   return E;
 }
 
@@ -13384,8 +13392,9 @@ ExprResult TreeTransform<Derived>::TransformExplicitlyDependentCallExpr(
 // Expansions Statements (C++2c, P1306).
 
 template <typename Derived>
-StmtResult TreeTransform<Derived>::TransformCXXIndeterminateExpansionStmt(
-    CXXIndeterminateExpansionStmt *S) {
+StmtResult
+TreeTransform<Derived>::TransformCXXIndeterminateExpansionStmt(
+                                             CXXIndeterminateExpansionStmt *S) {
   // Transform optional init-statement.
   Stmt *Init = S->getInit();
   if (Init) {
@@ -13433,8 +13442,9 @@ StmtResult TreeTransform<Derived>::TransformCXXIndeterminateExpansionStmt(
 }
 
 template <typename Derived>
-StmtResult TreeTransform<Derived>::TransformCXXIterableExpansionStmt(
-    CXXIterableExpansionStmt *S) {
+StmtResult
+TreeTransform<Derived>::TransformCXXIterableExpansionStmt(
+                                                  CXXIterableExpansionStmt *S) {
   // Transform optional init-statement.
   Stmt *Init = S->getInit();
   if (Init) {
@@ -13504,8 +13514,9 @@ StmtResult TreeTransform<Derived>::TransformCXXIterableExpansionStmt(
 }
 
 template <typename Derived>
-StmtResult TreeTransform<Derived>::TransformCXXDestructurableExpansionStmt(
-    CXXDestructurableExpansionStmt *S) {
+StmtResult
+TreeTransform<Derived>::TransformCXXDestructurableExpansionStmt(
+                                            CXXDestructurableExpansionStmt *S) {
   // Transform optional init-statement.
   Stmt *Init = S->getInit();
   if (Init) {
@@ -13572,8 +13583,9 @@ StmtResult TreeTransform<Derived>::TransformCXXDestructurableExpansionStmt(
 }
 
 template <typename Derived>
-StmtResult TreeTransform<Derived>::TransformCXXInitListExpansionStmt(
-    CXXInitListExpansionStmt *S) {
+StmtResult
+TreeTransform<Derived>::TransformCXXInitListExpansionStmt(
+                                                  CXXInitListExpansionStmt *S) {
   // Transform optional init-statement.
   Stmt *Init = S->getInit();
   if (Init) {
@@ -13621,8 +13633,9 @@ StmtResult TreeTransform<Derived>::TransformCXXInitListExpansionStmt(
 }
 
 template <typename Derived>
-ExprResult TreeTransform<Derived>::TransformCXXIndeterminateExpansionSelectExpr(
-    CXXIndeterminateExpansionSelectExpr *E) {
+ExprResult
+TreeTransform<Derived>::TransformCXXIndeterminateExpansionSelectExpr(
+                                       CXXIndeterminateExpansionSelectExpr *E) {
   ExprResult Range;
   {
     DeclContext *DC = SemaRef.CurContext;
@@ -13654,8 +13667,9 @@ ExprResult TreeTransform<Derived>::TransformCXXIndeterminateExpansionSelectExpr(
 }
 
 template <typename Derived>
-ExprResult TreeTransform<Derived>::TransformCXXIterableExpansionSelectExpr(
-    CXXIterableExpansionSelectExpr *E) {
+ExprResult
+TreeTransform<Derived>::TransformCXXIterableExpansionSelectExpr(
+                                            CXXIterableExpansionSelectExpr *E) {
   Decl *New = getDerived().TransformDecl(E->getBeginLoc(), E->getRangeVar());
   if (!New || New->isInvalidDecl())
     return ExprError();
@@ -13671,9 +13685,9 @@ ExprResult TreeTransform<Derived>::TransformCXXIterableExpansionSelectExpr(
 template <typename Derived>
 ExprResult
 TreeTransform<Derived>::TransformCXXDestructurableExpansionSelectExpr(
-    CXXDestructurableExpansionSelectExpr *E) {
-  Decl *New =
-      getDerived().TransformDecl(E->getBeginLoc(), E->getDecompositionDecl());
+                                      CXXDestructurableExpansionSelectExpr *E) {
+  Decl *New = getDerived().TransformDecl(E->getBeginLoc(),
+                                         E->getDecompositionDecl());
   if (!New || New->isInvalidDecl())
     return ExprError();
 
@@ -13689,8 +13703,9 @@ TreeTransform<Derived>::TransformCXXDestructurableExpansionSelectExpr(
 }
 
 template <typename Derived>
-ExprResult TreeTransform<Derived>::TransformCXXExpansionInitListSelectExpr(
-    CXXExpansionInitListSelectExpr *E) {
+ExprResult
+TreeTransform<Derived>::TransformCXXExpansionInitListSelectExpr(
+                                            CXXExpansionInitListSelectExpr *E) {
   ExprResult Range = getDerived().TransformExpr(E->getRangeExpr());
   ExprResult Idx = getDerived().TransformExpr(E->getIdxExpr());
   if (Range.isInvalid() || Idx.isInvalid())
@@ -13701,8 +13716,9 @@ ExprResult TreeTransform<Derived>::TransformCXXExpansionInitListSelectExpr(
 }
 
 template <typename Derived>
-ExprResult TreeTransform<Derived>::TransformCXXExpansionInitListExpr(
-    CXXExpansionInitListExpr *E) {
+ExprResult
+TreeTransform<Derived>::TransformCXXExpansionInitListExpr(
+                                                  CXXExpansionInitListExpr *E) {
   bool ArgChanged;
   SmallVector<Expr *> SubExprs;
   if (getDerived().TransformExprs(E->getSubExprs().data(),
