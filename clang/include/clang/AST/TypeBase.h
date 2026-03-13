@@ -1859,6 +1859,7 @@ private:
     unsigned TC : 8;
 
     /// Whether this is a consteval-only type ([basic.types.general], P2996).
+    LLVM_PREFERRED_TYPE(bool)
     unsigned ConstevalOnly : 1;
 
     /// Store information on the type dependency.
@@ -1946,8 +1947,8 @@ protected:
   };
 
 public:
-  static constexpr int FunctionTypeNumParamsWidth = 16;
-  static constexpr int FunctionTypeNumParamsLimit = (1 << 16) - 1;
+  static constexpr int FunctionTypeNumParamsWidth = 15;
+  static constexpr int FunctionTypeNumParamsLimit = (1 << 15) - 1;
 
 protected:
   /// FunctionTypeBitfields store various bits belonging to FunctionProtoType.
@@ -2362,10 +2363,9 @@ protected:
        bool ConstevalOnly)
       : ExtQualsTypeCommonBase(this,
                                canon.isNull() ? QualType(this_(), 0) : canon) {
-    /// NOTE: this is a hack to avoid the static_assert on 32-bit architectures
-    // static_assert(sizeof(*this) <=
-    //                   alignof(decltype(*this)) + sizeof(ExtQualsTypeCommonBase),
-    //               "changing bitfields changed sizeof(Type)!");
+    static_assert(sizeof(*this) <=
+                      alignof(decltype(*this)) + sizeof(ExtQualsTypeCommonBase),
+                  "changing bitfields changed sizeof(Type)!");
     static_assert(alignof(decltype(*this)) % TypeAlignment == 0,
                   "Insufficient alignment!");
     TypeBits.TC = tc;
