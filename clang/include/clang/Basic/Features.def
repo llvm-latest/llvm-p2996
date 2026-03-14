@@ -388,7 +388,8 @@ FEATURE(entity_proxy_reflection, LangOpts.EntityProxyReflection)
 FEATURE(reflection_latest, LangOpts.ReflectionLatest)
 
 // Usagi Extensions
-FEATURE(ext_usagi_reflect_templates, LangOpts.UsagiTemplateReflection)
+EXTENSION(ext_usagi_reflect_templates, LangOpts.UsagiTemplateReflection)
+EXTENSION(ext_usagi_constexpr_func_params, LangOpts.UsagiConstexprFunctionParams)
 
 // CUDA/HIP Features
 FEATURE(cuda_noinline_keyword, LangOpts.CUDA)

@@ -3720,9 +3720,15 @@ defm reflection_latest : BoolFOption<"reflection-latest",
   NegFlag<SetFalse>>;
 
 defm ext_usagi_template_reflection : BoolFOption<"ext-usagi-template-reflection",
+defm ext_usagi_template_reflection : BoolFOption<"ext-usagi-template-reflection", Group<usagi_Group>
   LangOpts<"UsagiTemplateReflection">, DefaultFalse,
   PosFlag<SetTrue, [], [ClangOption, CC1Option],
           "Enable template reflection extension">,
+  NegFlag<SetFalse>>;
+defm ext_usagi_constexpr_func_params : BoolFOption<"ext-usagi-constexpr-func-params", Group<usagi_Group>
+  LangOpts<"UsagiConstexprFunctionParams">, DefaultFalse,
+  PosFlag<SetTrue, [], [ClangOption, CC1Option],
+          "Enable constexpr function parameters extension">,
   NegFlag<SetFalse>>;
 
 defm sized_deallocation : BoolFOption<"sized-deallocation",

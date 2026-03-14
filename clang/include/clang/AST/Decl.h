@@ -1049,6 +1049,12 @@ protected:
     LLVM_PREFERRED_TYPE(bool)
     unsigned IsObjCMethodParam : 1;
 
+#pragma region usagi-ext-constexpr-params
+    // Seems there is no NumParmVarDeclBits
+    LLVM_PREFERRED_TYPE(bool)
+    unsigned IsConstexprParam : 1;
+#pragma endregion
+
     /// If IsObjCMethodParam, a Decl::ObjCDeclQualifier.
     /// Otherwise, the number of function parameter scopes enclosing
     /// the function parameter scope in which this parameter was
@@ -1950,6 +1956,13 @@ public:
     ParmVarDeclBits.HasInheritedDefaultArg = I;
   }
 
+#pragma region usagi-ext-constexpr-params
+  bool isConstexprParam() const { return ParmVarDeclBits.IsConstexprParam; }
+  void setConstexprParam(bool V = true) {
+    ParmVarDeclBits.IsConstexprParam = V;
+  }
+#pragma endregion
+
   QualType getOriginalType() const;
 
   /// Sets the function declaration that owns this
@@ -2113,6 +2126,10 @@ private:
   /// Provides source/type location info for the declaration name embedded in
   /// the DeclaratorDecl base class.
   DeclarationNameLoc DNLoc;
+
+#pragma region usagi-ext-constexpr-params
+  FunctionTemplateDecl *UnderlyingFuncTemplateWithConstexprParams = nullptr;
+#pragma endregion
 
   /// Specify that this function declaration is actually a function
   /// template specialization.
@@ -2718,6 +2735,22 @@ public:
     return getCanonicalDecl()
         ->FunctionDeclBits.FriendConstraintRefersToEnclosingTemplate;
   }
+
+#pragma region usagi-ext-constexpr-params
+  bool isConstexprParamFuncProxy() const {
+    return getCanonicalDecl()->FunctionDeclBits.IsConstexprParamFuncProxy;
+  }
+  void setIsConstexprParamFuncProxy(bool V = true) {
+    getCanonicalDecl()->FunctionDeclBits.IsConstexprParamFuncProxy = V;
+  }
+
+  FunctionTemplateDecl *getUnderlyingConstexprParamTemplate() const {
+    return UnderlyingFuncTemplateWithConstexprParams;
+  }
+  void setUnderlyingConstexprParamTemplate(FunctionTemplateDecl *FTD) {
+    UnderlyingFuncTemplateWithConstexprParams = FTD;
+  }
+#pragma endregion
 
   /// Determine whether a function is a friend function that cannot be
   /// redeclared outside of its class, per C++ [temp.friend]p9.

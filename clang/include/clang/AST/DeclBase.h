@@ -1843,10 +1843,22 @@ protected:
     // refers to an enclosing template for hte purposes of [temp.friend]p9.
     LLVM_PREFERRED_TYPE(bool)
     uint64_t FriendConstraintRefersToEnclosingTemplate : 1;
+
+#pragma region usagi-ext-constexpr-params
+    // Usagi constexpr function parameter extension
+    LLVM_PREFERRED_TYPE(bool)
+    uint64_t IsConstexprParamFuncProxy : 1;
+
+  public:
+    static constexpr int usagi_additional_bits = 1;
   };
 
   /// Number of inherited and non-inherited bits in FunctionDeclBitfields.
-  enum { NumFunctionDeclBits = NumDeclContextBits + 32 };
+  enum {
+    NumFunctionDeclBits =
+        NumDeclContextBits + 32 + FunctionDeclBitfields::usagi_additional_bits
+  };
+#pragma endregion
 
   /// Stores the bits used by CXXConstructorDecl. If modified
   /// NumCXXConstructorDeclBits and the accessor
@@ -1857,12 +1869,13 @@ protected:
     LLVM_PREFERRED_TYPE(FunctionDeclBitfields)
     uint64_t : NumFunctionDeclBits;
 
-    /// 19 bits to fit in the remaining available space.
+#pragma region usagi-ext-constexpr-params
+    /// 18 bits to fit in the remaining available space.
     /// Note that this makes CXXConstructorDeclBitfields take
     /// exactly 64 bits and thus the width of NumCtorInitializers
     /// will need to be shrunk if some bit is added to NumDeclContextBitfields,
     /// NumFunctionDeclBitfields or CXXConstructorDeclBitfields.
-    uint64_t NumCtorInitializers : 16;
+    uint64_t NumCtorInitializers : 15;
     LLVM_PREFERRED_TYPE(bool)
     uint64_t IsInheritingConstructor : 1;
 
@@ -1876,7 +1889,11 @@ protected:
   };
 
   /// Number of inherited and non-inherited bits in CXXConstructorDeclBitfields.
-  enum { NumCXXConstructorDeclBits = NumFunctionDeclBits + 19 };
+  enum {
+    NumCXXConstructorDeclBits =
+        NumFunctionDeclBits + 19 - FunctionDeclBitfields ::usagi_additional_bits
+  };
+#pragma endregion
 
   /// Stores the bits used by ObjCMethodDecl.
   /// If modified NumObjCMethodDeclBits and the accessor
