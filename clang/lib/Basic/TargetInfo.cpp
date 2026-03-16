@@ -132,6 +132,7 @@ TargetInfo::TargetInfo(const llvm::Triple &T) : Triple(T) {
   MaxAtomicPromoteWidth = MaxAtomicInlineWidth = 0;
   MaxVectorAlign = 0;
   MaxTLSAlign = 0;
+  VectorsAreElementAligned = false;
   SizeType = UnsignedLong;
   PtrDiffType = SignedLong;
   IntMaxType = SignedLongLong;
