@@ -77,8 +77,8 @@ def metafn_function_is_not_member_of_object : Note<
    "given object reflection">;
 def metafn_function_returns_void : Note<
    "cannot invoke reflection of void-returning function">;
-def metafn_function_has_trailing_reqs: Note<
-   "cannot invoke reflection of function with trailing requires-clauses">;
+def metafn_function_has_trailing_reqs : Note<
+   "cannot reflect a parameter of a function before the trailing requirements are fully defined">;
 
 // Layout.
 def metafn_offset_virtual_base_of_abstract : Note<

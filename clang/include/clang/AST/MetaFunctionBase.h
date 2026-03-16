@@ -142,7 +142,7 @@ enum class MetaFunctionID : std::uint8_t {
   is_access_specified = 131,
   reflect_invoke = 132,
 
-  // Yukino's own metafunctions
+  // Usagi's own metafunctions
   // template_parameters_of = 141,
   get_ith_template_parameters_of = 141,
   is_type_template_parameter = 142,

@@ -770,7 +770,7 @@ void ASTDeclWriter::VisitDeclaratorDecl(DeclaratorDecl *D) {
 }
 
 void ASTDeclWriter::VisitFunctionDecl(FunctionDecl *D) {
-  static_assert(DeclContext::NumFunctionDeclBits == 45,
+  static_assert(DeclContext::NumFunctionDeclBits == 46,
                 "You need to update the serializer after you change the "
                 "FunctionDeclBits");
 
@@ -881,7 +881,11 @@ void ASTDeclWriter::VisitFunctionDecl(FunctionDecl *D) {
   FunctionDeclBits.addBit(D->usesSEHTry());
   FunctionDeclBits.addBit(D->isDestroyingOperatorDelete());
   FunctionDeclBits.addBit(D->isTypeAwareOperatorNewOrDelete());
+  FunctionDeclBits.addBit(D->isConstexprParamFuncProxy());
   Record.push_back(FunctionDeclBits);
+  if (D->isConstexprParamFuncProxy()) {
+    Record.AddDeclRef(D->getUnderlyingConstexprParamTemplate());
+  }
 
   Record.AddSourceLocation(D->getEndLoc());
   if (D->isExplicitlyDefaulted())
@@ -1375,6 +1379,7 @@ void ASTDeclWriter::VisitParmVarDecl(ParmVarDecl *D) {
   ParmVarDeclBits.addBit(D->hasInheritedDefaultArg());
   ParmVarDeclBits.addBit(D->hasUninstantiatedDefaultArg());
   ParmVarDeclBits.addBit(D->getExplicitObjectParamThisLoc().isValid());
+  ParmVarDeclBits.addBit(D->isConstexprParam());
   Record.push_back(ParmVarDeclBits);
 
   if (D->hasUninstantiatedDefaultArg())

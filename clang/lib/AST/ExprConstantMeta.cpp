@@ -1111,6 +1111,7 @@ APValue MaybeUnproxy(ASTContext &C, APValue RV, bool Dealias = true) {
                        /*DropRefs=*/false);
 
     return {ReflectionKind::Type, QT.getAsOpaquePtr()};
+  // todo: is this recursive? seems not?
   } else if (auto *T = dyn_cast<TemplateDecl>(ND)) {
     return {ReflectionKind::Template, T};
   }
@@ -2058,18 +2059,6 @@ bool parent_of(const MetaFunctionEvalContext &EvalCtx) {
   };
 
   switch (RV.getReflectionKind()) {
-  case ReflectionKind::Null:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
-  // todo NTTP?
-  case ReflectionKind::TemplateParameter:
-    if (EvalCtx.Diagnoser)
-      return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
-                               diag::metafn_no_associated_property)
-             << DescriptionOf(RV) << 1 << EvalCtx.Range;
-    return true;
   case ReflectionKind::Type: {
     if (TemplateName TName = findTemplateOfType(RV.getReflectedType());
         !TName.isNull())
@@ -2110,10 +2099,24 @@ bool parent_of(const MetaFunctionEvalContext &EvalCtx) {
                               /*DropRefs=*/false);
     return SetReflectionAndSucceed(EvalCtx, QT);
   }
+  // todo NTTP?
+  case ReflectionKind::TemplateParameter: {
   }
-  llvm_unreachable("unknown reflection kind");
+  default: {
+    if (EvalCtx.Diagnoser)
+      return EvalCtx.Diagnoser(EvalCtx.Range.getBegin(),
+                               diag::metafn_no_associated_property)
+             << DescriptionOf(RV) << 1 << EvalCtx.Range;
+    return true;
+  }
+  }
 }
 
+// Essentially `dealias()`. renamed to `underlying_entity_of() by P3687.
+// See https://www.open-std.org/jtc1/sc22/wg21/docs/papers/2025/p3687r1.html
+// Only type/namespace aliases and UsingShadowDecl can be dealiased.
+// Other reflection objects will be returned as-is.
+// This function should recursively resolve the alias.
 bool underlying_entity_of(const MetaFunctionEvalContext &EvalCtx) {
   CheckReflectionArg(EvalCtx, 0);
   CheckResultTyIsMetaInfo(EvalCtx);
@@ -2123,18 +2126,6 @@ bool underlying_entity_of(const MetaFunctionEvalContext &EvalCtx) {
     return true;
 
   switch (RV.getReflectionKind()) {
-  case ReflectionKind::Null:
-  case ReflectionKind::Object:
-  case ReflectionKind::Value:
-  case ReflectionKind::Declaration:
-  case ReflectionKind::Template:
-  case ReflectionKind::BaseSpecifier:
-  case ReflectionKind::Parameter:
-  case ReflectionKind::DataMemberSpec:
-  case ReflectionKind::Annotation:
-  // todo NTTP?
-  case ReflectionKind::TemplateParameter:
-    return SetAndSucceed(*EvalCtx.Result, RV);
   case ReflectionKind::Type: {
     QualType QT = RV.getReflectedType();
     QT = desugarType(QT, /*UnwrapAliases=*/true, /*DropCV=*/false,
@@ -2147,12 +2138,17 @@ bool underlying_entity_of(const MetaFunctionEvalContext &EvalCtx) {
       NS = A->getNamespace();
     return SetReflectionAndSucceed(EvalCtx, NS);
   }
-  case ReflectionKind::EntityProxy:
+  // UsingShadowDecl
+  case ReflectionKind::EntityProxy: {
     return SetAndSucceed(*EvalCtx.Result, MaybeUnproxy(*EvalCtx.C, RV));
   }
-  llvm_unreachable("unknown reflection kind");
+  // Not an alias.
+  default:
+    return SetAndSucceed(*EvalCtx.Result, RV);
+  }
 }
 
+// A proxied entity represents a UsingShadowDecl.
 bool proxied_entity_of(const MetaFunctionEvalContext &EvalCtx) {
   CheckReflectionArg(EvalCtx, 0);
   CheckResultTyIsMetaInfo(EvalCtx);

@@ -1049,6 +1049,10 @@ protected:
     LLVM_PREFERRED_TYPE(bool)
     unsigned IsObjCMethodParam : 1;
 
+    // Seems there is no NumParmVarDeclBits
+    LLVM_PREFERRED_TYPE(bool)
+    unsigned IsConstexprParam : 1;
+
     /// If IsObjCMethodParam, a Decl::ObjCDeclQualifier.
     /// Otherwise, the number of function parameter scopes enclosing
     /// the function parameter scope in which this parameter was
@@ -1950,6 +1954,12 @@ public:
     ParmVarDeclBits.HasInheritedDefaultArg = I;
   }
 
+  bool isConstexprParam() const { return ParmVarDeclBits.IsConstexprParam; }
+
+  void setConstexprParam(bool V = true) {
+    ParmVarDeclBits.IsConstexprParam = V;
+  }
+
   QualType getOriginalType() const;
 
   /// Sets the function declaration that owns this
@@ -2113,6 +2123,8 @@ private:
   /// Provides source/type location info for the declaration name embedded in
   /// the DeclaratorDecl base class.
   DeclarationNameLoc DNLoc;
+
+  FunctionTemplateDecl *UnderlyingFuncTemplateWithConstexprParams = nullptr;
 
   /// Specify that this function declaration is actually a function
   /// template specialization.
@@ -2717,6 +2729,20 @@ public:
   bool FriendConstraintRefersToEnclosingTemplate() const {
     return getCanonicalDecl()
         ->FunctionDeclBits.FriendConstraintRefersToEnclosingTemplate;
+  }
+
+  bool isConstexprParamFuncProxy() const {
+    return getCanonicalDecl()->FunctionDeclBits.IsConstexprParamFuncProxy;
+  }
+  void setIsConstexprParamFuncProxy(bool V = true) {
+    getCanonicalDecl()->FunctionDeclBits.IsConstexprParamFuncProxy = V;
+  }
+
+  FunctionTemplateDecl *getUnderlyingConstexprParamTemplate() const {
+    return UnderlyingFuncTemplateWithConstexprParams;
+  }
+  void setUnderlyingConstexprParamTemplate(FunctionTemplateDecl *FTD) {
+    UnderlyingFuncTemplateWithConstexprParams = FTD;
   }
 
   /// Determine whether a function is a friend function that cannot be

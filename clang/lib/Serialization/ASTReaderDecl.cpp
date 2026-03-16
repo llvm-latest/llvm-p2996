@@ -1079,6 +1079,11 @@ void ASTDeclReader::VisitFunctionDecl(FunctionDecl *FD) {
   FD->setUsesSEHTry(FunctionDeclBits.getNextBit());
   FD->setIsDestroyingOperatorDelete(FunctionDeclBits.getNextBit());
   FD->setIsTypeAwareOperatorNewOrDelete(FunctionDeclBits.getNextBit());
+  FD->setIsConstexprParamFuncProxy(FunctionDeclBits.getNextBit());
+  if (FD->isConstexprParamFuncProxy()) {
+    FD->setUnderlyingConstexprParamTemplate(
+        Record.readDeclAs<FunctionTemplateDecl>());
+  }
 
   FD->EndRangeLoc = readSourceLocation();
   if (FD->isExplicitlyDefaulted())
@@ -1749,6 +1754,10 @@ void ASTDeclReader::VisitParmVarDecl(ParmVarDecl *PD) {
 
   if (ParmVarDeclBits.getNextBit()) // Valid explicit object parameter
     PD->ExplicitObjectParameterIntroducerLoc = Record.readSourceLocation();
+
+  // Make sure the order of extracting bits aligns with
+  // ASTDeclWriter::VisitParmVarDecl
+  PD->ParmVarDeclBits.IsConstexprParam = ParmVarDeclBits.getNextBit();
 
   // FIXME: If this is a redeclaration of a function from another module, handle
   // inheritance of default arguments.
