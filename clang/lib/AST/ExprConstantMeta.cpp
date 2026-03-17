@@ -764,7 +764,7 @@ APValue getNthTemplateArgument(ASTContext &C,
     Expr *TExpr = templArgument.getAsExpr();
 
     APValue ArgResult;
-    bool success = Evaluator(ArgResult, TExpr, !TExpr->isLValue());
+    [[maybe_unused]] bool success = Evaluator(ArgResult, TExpr, !TExpr->isLValue());
     assert(success);
 
     return ArgResult.Lift(TExpr->getType());
@@ -1321,6 +1321,7 @@ bool get_begin_enumerator_decl_of(const MetaFunctionEvalContext &EvalCtx) {
     }
     // return DiagnoseReflectionKind(EvalCtx.Diagnoser, EvalCtx.Range,
     // "an enum type");
+    [[fallthrough]];
   }
   default: {
     return DiagnoseReflectionKind(EvalCtx.Diagnoser, EvalCtx.Range,
@@ -2101,6 +2102,7 @@ bool parent_of(const MetaFunctionEvalContext &EvalCtx) {
   }
   // todo NTTP?
   case ReflectionKind::TemplateParameter: {
+    [[fallthrough]];
   }
   default: {
     if (EvalCtx.Diagnoser)
@@ -3692,8 +3694,9 @@ bool has_complete_definition(const MetaFunctionEvalContext &EvalCtx) {
   case ReflectionKind::EntityProxy:
     llvm_unreachable("proxies should already have been unwrapped");
   default:
-    SetBoolAndSucceed(EvalCtx, result);
+    break;
   }
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 // todo NTTP?
@@ -3719,8 +3722,9 @@ bool is_enumerable_type(const MetaFunctionEvalContext &EvalCtx) {
   case ReflectionKind::EntityProxy:
     llvm_unreachable("proxies should already have been unwrapped");
   default:
-    SetBoolAndSucceed(EvalCtx, result);
+    break;
   }
+  return SetBoolAndSucceed(EvalCtx, result);
 }
 
 // todo: template template parameter?
@@ -5256,7 +5260,7 @@ bool is_accessible(const MetaFunctionEvalContext &EvalCtx) {
   case ReflectionKind::BaseSpecifier: {
     CXXBaseSpecifier *BaseSpec = RV.getReflectedBaseSpecifier();
 
-    auto *Base = findTypeDecl(BaseSpec->getType());
+    [[maybe_unused]] auto *Base = findTypeDecl(BaseSpec->getType());
     assert(Base && "base class has no type declaration?");
 
     QualType BaseTy = BaseSpec->getType();
