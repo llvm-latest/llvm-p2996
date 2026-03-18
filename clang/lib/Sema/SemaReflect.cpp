@@ -1539,8 +1539,8 @@ QualType Sema::BuildReflectionSpliceType(SourceLocation TypenameKWLoc,
     } else {
       // todo [merge:yukino:maybe-revert]
       ReflectedTy = Context.getDeducedTemplateSpecializationType(
-          ElaboratedTypeKeyword::None, Refl.getReflectedTemplate(), QualType(),
-          false);
+          DeducedKind::Undeduced, QualType(), ElaboratedTypeKeyword::None,
+          Refl.getReflectedTemplate());
     }
   } else if (!Refl.isReflectedType()) {
     if (Complain)
