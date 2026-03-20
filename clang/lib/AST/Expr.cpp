@@ -2255,9 +2255,8 @@ SourceLocExpr::SourceLocExpr(const ASTContext &Ctx, SourceLocIdentKind Kind,
       BuiltinLoc(BLoc), RParenLoc(RParenLoc), ParentContext(ParentContext) {
   SourceLocExprBits.Kind = llvm::to_underlying(Kind);
   // In dependent contexts, function names may change.
-  setDependence(MayBeDependent(Kind) && ParentContext &&
-                ParentContext->isDependentContext()
-                    ? ExprDependence::Value
+  setDependence(MayBeDependent(Kind) && ParentContext->isDependentContext()
+                    ? ExprDependence::ValueInstantiation
                     : ExprDependence::None);
 }
 
