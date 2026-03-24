@@ -2377,7 +2377,7 @@ consteval auto reflect_constant_string(std::u8string_view In) -> info {
 
 namespace __range_of_infos {
 
-struct next_template_parameter_of_fn {
+constexpr struct next_template_parameter_of_fn {
   consteval info operator()(auto /* currItrInfo */, info reflectedEntity,
                             size_t idx) const {
     return __metafunction(detail::__metafn_get_ith_template_parameters_of,
@@ -2385,7 +2385,7 @@ struct next_template_parameter_of_fn {
   }
 } next_template_parameter;
 
-struct front_template_parameter_of_fn {
+constexpr struct front_template_parameter_of_fn {
   consteval info operator()(info reflectedEntity) const {
     return __metafunction(detail::__metafn_get_ith_template_parameters_of,
                           reflectedEntity, ^^sentinel, 0);
