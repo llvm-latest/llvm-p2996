@@ -956,6 +956,7 @@ void ASTWriter::WriteBlockInfoBlock() {
   RECORD(TU_UPDATE_LEXICAL);
   RECORD(SEMA_DECL_REFS);
   RECORD(WEAK_UNDECLARED_IDENTIFIERS);
+  RECORD(EXTNAME_UNDECLARED_IDENTIFIERS);
   RECORD(PENDING_IMPLICIT_INSTANTIATIONS);
   RECORD(UPDATE_VISIBLE);
   RECORD(DELAYED_NAMESPACE_LEXICAL_VISIBLE_RECORD);
@@ -5511,7 +5512,7 @@ time_t ASTWriter::getTimestampForOutput(time_t ModTime) const {
 ASTFileSignature
 ASTWriter::WriteAST(llvm::PointerUnion<Sema *, Preprocessor *> Subject,
                     StringRef OutputFile, Module *WritingModule,
-                    StringRef isysroot, bool ShouldCacheASTInMemory) {
+                    StringRef isysroot) {
   llvm::TimeTraceScope scope("WriteAST", OutputFile);
   WritingAST = true;
 
@@ -5538,12 +5539,6 @@ ASTWriter::WriteAST(llvm::PointerUnion<Sema *, Preprocessor *> Subject,
 
   WritingAST = false;
 
-  if (ShouldCacheASTInMemory) {
-    // Construct MemoryBuffer and update buffer manager.
-    ModCache.getInMemoryModuleCache().addBuiltPCM(
-        OutputFile, llvm::MemoryBuffer::getMemBufferCopy(
-                        StringRef(Buffer.begin(), Buffer.size())));
-  }
   return Signature;
 }
 
@@ -6113,6 +6108,22 @@ ASTFileSignature ASTWriter::WriteASTCore(Sema *SemaPtr, StringRef isysroot,
     }
   }
 
+  // Write the set of #pragma redefine_extname'd, undeclared identifiers. We
+  // always write the entire table, since later PCH files in a PCH chain are
+  // only interested in the results at the end of the chain.
+  RecordData ExtnameUndeclaredIdentifiers;
+  if (SemaPtr && !isWritingStdCXXNamedModules()) {
+    ASTContext &Context = SemaPtr->Context;
+    ASTRecordWriter ExtnameUndeclaredIdentifiersWriter(
+        Context, *this, ExtnameUndeclaredIdentifiers);
+    for (const auto &[II, AL] : SemaPtr->ExtnameUndeclaredIdentifiers) {
+      ExtnameUndeclaredIdentifiersWriter.AddIdentifierRef(II);
+      ExtnameUndeclaredIdentifiersWriter.AddIdentifierRef(
+          &Context.Idents.get(AL->getLabel()));
+      ExtnameUndeclaredIdentifiersWriter.AddSourceLocation(AL->getLocation());
+    }
+  }
+
   // Form the record of special types.
   RecordData SpecialTypes;
   if (SemaPtr) {
@@ -6259,6 +6270,12 @@ ASTFileSignature ASTWriter::WriteASTCore(Sema *SemaPtr, StringRef isysroot,
   if (!WeakUndeclaredIdentifiers.empty())
     Stream.EmitRecord(WEAK_UNDECLARED_IDENTIFIERS,
                       WeakUndeclaredIdentifiers);
+
+  // Write the record containing #pragma redefine_extname'd undeclared
+  // identifiers.
+  if (!ExtnameUndeclaredIdentifiers.empty())
+    Stream.EmitRecord(EXTNAME_UNDECLARED_IDENTIFIERS,
+                      ExtnameUndeclaredIdentifiers);
 
   if (!WritingModule) {
     // Write the submodules that were imported, if any.

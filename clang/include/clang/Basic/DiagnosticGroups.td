@@ -1800,6 +1800,7 @@ def BoundsSafetyCountedByEltTyUnknownSize :
 
 // A group for cross translation unit static analysis related warnings.
 def CrossTU : DiagGroup<"ctu">;
+def CrossTURemarks : DiagGroup<"ctu-remarks">;
 
 def CTADMaybeUnsupported : DiagGroup<"ctad-maybe-unsupported">;
 
@@ -1929,5 +1930,8 @@ def TrivialAutoVarInit : DiagGroup<"trivial-auto-var-init">;
 def ExperimentalOption : DiagGroup<"experimental-option">;
 
 def UnsafeBufferUsageInStringView : DiagGroup<"unsafe-buffer-usage-in-string-view">;
+
+// Warnings about unguarded usages of AMDGPU target specific constructs
+def UnguardedBuiltinUsageAMDGPU : DiagGroup<"amdgpu-unguarded-builtin-usage">;
 
 def ReflexingParse : DiagGroup<"reflexing-parse">;
