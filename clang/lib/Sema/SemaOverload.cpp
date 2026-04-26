@@ -1523,6 +1523,12 @@ static bool IsOverloadOrOverrideImpl(Sema &SemaRef, FunctionDecl *New,
     return false;
   };
 
+  // We look at the parameters first, as it is the common case.
+  // However we should not emit diagnostic before checking
+  // the overloads do not differ by constraints or other discriminant.
+  bool ShouldDiagnoseInconsistentRefQualifiers = false;
+  bool HaveInconsistentQualifiers = false;
+
   if (OldMethod && OldMethod->isExplicitObjectMemberFunction())
     OldParamsOffset++;
   if (NewMethod && NewMethod->isExplicitObjectMemberFunction())
@@ -1559,16 +1565,19 @@ static bool IsOverloadOrOverrideImpl(Sema &SemaRef, FunctionDecl *New,
     }(OldMethod, NewMethod);
 
     if (!HaveCorrespondingObjectParameters) {
-      if (DiagnoseInconsistentRefQualifiers())
-        return true;
+      ShouldDiagnoseInconsistentRefQualifiers = true;
       // CWG2554
       // and, if at least one is an explicit object member function, ignoring
       // object parameters
       if (!UseOverrideRules || (!NewMethod->isExplicitObjectMemberFunction() &&
                                 !OldMethod->isExplicitObjectMemberFunction()))
-        return true;
+        HaveInconsistentQualifiers = true;
     }
   }
+
+  if (NewMethod && OldMethod && OldMethod->isImplicitObjectMemberFunction() &&
+      NewMethod->isImplicitObjectMemberFunction())
+    ShouldDiagnoseInconsistentRefQualifiers = true;
 
   if (!UseOverrideRules &&
       New->getTemplateSpecializationKind() != TSK_ExplicitSpecialization) {
@@ -1581,12 +1590,6 @@ static bool IsOverloadOrOverrideImpl(Sema &SemaRef, FunctionDecl *New,
     if (NewRC &&
         !SemaRef.AreConstraintExpressionsEqual(OldDecl, OldRC.ConstraintExpr,
                                                NewDecl, NewRC.ConstraintExpr))
-      return true;
-  }
-
-  if (NewMethod && OldMethod && OldMethod->isImplicitObjectMemberFunction() &&
-      NewMethod->isImplicitObjectMemberFunction()) {
-    if (DiagnoseInconsistentRefQualifiers())
       return true;
   }
 
@@ -1613,6 +1616,11 @@ static bool IsOverloadOrOverrideImpl(Sema &SemaRef, FunctionDecl *New,
     if (NewID != OldID)
       return true;
   }
+
+  if ((ShouldDiagnoseInconsistentRefQualifiers &&
+       DiagnoseInconsistentRefQualifiers()) ||
+      HaveInconsistentQualifiers)
+    return true;
 
   // At this point, it is known that the two functions have the same signature.
   if (SemaRef.getLangOpts().CUDA && ConsiderCudaAttrs) {
@@ -15713,7 +15721,8 @@ ExprResult Sema::CreateOverloadedBinOp(SourceLocation OpLoc,
         TheCall = CXXOperatorCallExpr::Create(
             Context, ChosenOp, FnExpr.get(), Args, ResultTy, VK, OpLoc,
             CurFPFeatureOverrides(),
-            static_cast<CallExpr::ADLCallKind>(Best->IsADLCandidate));
+            static_cast<CallExpr::ADLCallKind>(Best->IsADLCandidate),
+            IsReversed);
 
         if (const auto *Method = dyn_cast<CXXMethodDecl>(FnDecl);
             Method && Method->isImplicitObjectMemberFunction()) {

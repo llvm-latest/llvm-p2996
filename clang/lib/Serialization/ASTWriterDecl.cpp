@@ -144,6 +144,7 @@ namespace clang {
     void VisitFriendDecl(FriendDecl *D);
     void VisitFriendTemplateDecl(FriendTemplateDecl *D);
     void VisitStaticAssertDecl(StaticAssertDecl *D);
+    void VisitExplicitInstantiationDecl(ExplicitInstantiationDecl *D);
     void VisitConstevalBlockDecl(ConstevalBlockDecl *D);
     void VisitExpansionStmtDecl(ExpansionStmtDecl *D);
     void VisitBlockDecl(BlockDecl *D);
@@ -923,6 +924,10 @@ void ASTDeclWriter::VisitFunctionDecl(FunctionDecl *D) {
           Writer.GetDeclRef(D));
     }
   }
+
+  // Ensure associated ExplicitInstantiationDecls survive reduced BMI.
+  for (auto *EID : Record.getASTContext().getExplicitInstantiationDecls(D))
+    Writer.GetDeclRef(EID);
 
   Record.push_back(D->param_size());
   for (auto *P : D->parameters())
@@ -1973,6 +1978,10 @@ void ASTDeclWriter::VisitClassTemplateSpecializationDecl(
       Writer.GetDeclRef(DG->getCanonicalDecl());
   }
 
+  // Ensure associated ExplicitInstantiationDecls survive reduced BMI.
+  for (auto *EID : Record.getASTContext().getExplicitInstantiationDecls(D))
+    Writer.GetDeclRef(EID);
+
   Code = serialization::DECL_CLASS_TEMPLATE_SPECIALIZATION;
 }
 
@@ -2041,6 +2050,10 @@ void ASTDeclWriter::VisitVarTemplateSpecializationDecl(
     // When reading, we'll add it to the folding set of the following template.
     Record.AddDeclRef(D->getSpecializedTemplate()->getCanonicalDecl());
   }
+
+  // Ensure associated ExplicitInstantiationDecls survive reduced BMI.
+  for (auto *EID : Record.getASTContext().getExplicitInstantiationDecls(D))
+    Writer.GetDeclRef(EID);
 
   Code = serialization::DECL_VAR_TEMPLATE_SPECIALIZATION;
 }
@@ -2181,6 +2194,31 @@ void ASTDeclWriter::VisitStaticAssertDecl(StaticAssertDecl *D) {
   Record.AddStmt(D->getMessage());
   Record.AddSourceLocation(D->getRParenLoc());
   Code = serialization::DECL_STATIC_ASSERT;
+}
+
+void ASTDeclWriter::VisitExplicitInstantiationDecl(
+    ExplicitInstantiationDecl *D) {
+  // Trailing-object flags must be the first thing written so the reader can
+  // allocate the right amount of trailing storage in CreateDeserialized.
+  unsigned Flags = 0;
+  if (D->hasTrailingQualifier())
+    Flags |= ExplicitInstantiationDecl::HasQualifierFlag;
+  if (D->hasTrailingArgsAsWritten())
+    Flags |= ExplicitInstantiationDecl::HasArgsAsWrittenFlag;
+  Record.push_back(Flags);
+
+  VisitDecl(D);
+  Record.AddDeclRef(D->getSpecialization());
+  Record.AddSourceLocation(D->getExternLoc());
+  Record.AddSourceLocation(D->getNameLoc());
+  Record.AddTypeSourceInfo(D->getRawTypeSourceInfo());
+  Record.push_back(D->getTemplateSpecializationKind());
+  // Trailing objects.
+  if (D->hasTrailingQualifier())
+    Record.AddNestedNameSpecifierLoc(D->getQualifierLoc());
+  if (const auto *Args = D->getTrailingArgsInfo())
+    Record.AddASTTemplateArgumentListInfo(Args);
+  Code = serialization::DECL_EXPLICIT_INSTANTIATION;
 }
 
 void ASTDeclWriter::VisitConstevalBlockDecl(ConstevalBlockDecl *D) {
@@ -2944,6 +2982,7 @@ void ASTWriter::WriteDeclAbbrevs() {
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // Source Location
   // CXXOperatorCallExpr
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // Operator Kind
+  Abv->Add(BitCodeAbbrevOp(0));                       // IsReversed
   Abv->Add(BitCodeAbbrevOp(BitCodeAbbrevOp::VBR, 6)); // Source Location
   CXXOperatorCallExprAbbrev = Stream.EmitAbbrev(std::move(Abv));
 
