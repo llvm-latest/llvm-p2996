@@ -373,8 +373,8 @@ bool Parser::ParseOptionalCXXScopeSpecifier(
         // we already annotated the template-id.
         if (ParseUnqualifiedIdOperator(SS, EnteringContext, ObjectType,
                                        TemplateName)) {
-          TPA.Commit();
-          break;
+          TPA.Revert();
+          return true;
         }
 
         if (TemplateName.getKind() != UnqualifiedIdKind::IK_OperatorFunctionId &&
@@ -382,8 +382,8 @@ bool Parser::ParseOptionalCXXScopeSpecifier(
           Diag(TemplateName.getSourceRange().getBegin(),
                diag::err_id_after_template_in_nested_name_spec)
             << TemplateName.getSourceRange();
-          TPA.Commit();
-          break;
+          TPA.Revert();
+          return true;
         }
       } else {
         TPA.Revert();
